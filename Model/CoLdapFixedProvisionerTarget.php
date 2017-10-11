@@ -907,10 +907,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
        // Skip this if we're doing a delete and an add, which is basically a rename
        && !($delete && $add)) {
       if(!$dns['newdn']) {
-        throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.none',
-                                        array($person ? _txt('ct.co_people.1') : _txt('ct.co_groups.1'),
-                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
-                                              $dns['newdnerr'])));
+        // silently ignore cases where we do not have a valid LDAP DN
+        return true;
+//        throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.none',
+//                                        array($person ? _txt('ct.co_people.1') : _txt('ct.co_groups.1'),
+//                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
+//                                              $dns['newdnerr'])));
       }
 
       // Perform the rename operation before we try to do anything else. Note that
@@ -932,10 +934,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
 
     if($modify) {
       if(!$dns['newdn']) {
-        throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.none',
-                                        array($person ? _txt('ct.co_people.1') : _txt('ct.co_groups.1'),
-                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
-                                              $dns['newdnerr'])));
+        // silently ignore cases where we do not have a valid LDAP DN
+        return true;
+//        throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.none',
+//                                        array($person ? _txt('ct.co_people.1') : _txt('ct.co_groups.1'),
+//                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
+//                                              $dns['newdnerr'])));
       }
 
       if(!$this->ldap_mod_replace($dns['newdn'], $attributes)) {
@@ -961,10 +965,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
       // Write a new entry
 
       if(!$dns['newdn']) {
-        throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.none',
-                                        array($provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
-                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
-                                              $dns['newdnerr'])));
+          // silently ignore cases where we do not have a valid LDAP DN
+          return true;
+//        throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.none',
+//                                        array($provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
+//                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
+//                                              $dns['newdnerr'])));
       }
 
       if(!$this->ldap_add($dns['newdn'], $attributes)) {
