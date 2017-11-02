@@ -24,8 +24,7 @@ Configuration
 The LdapFixedProvisioner allows configuration of an LDAP server connection and LDAP scheme using the Cake application configuration. Configuration uses the ```PhpReader``` COnfiguration reader to read an array of values. An example configuration is provided in the ```Config``` directory of this Plugin.
 
 The configuration resides inside a ```config``` variable and specifies basic server information, behaviour information and objectclass and attribute information:
-* basedn: base DN for users/people/members>, usually in the form ```ou=People,dc=example,dc.com```
-* groupdn: base DN for COGroups, usually in the form ```ou=Groups,dc=example,dc=com```
+* basedn: base DN for people and groups, usually in the form ```dc=example,dc.com```
 * dn_attribute_name: the attribute to use for generating the DN, usually one of ```eppn``` or ```uid```
 * dn_identifier_type: the Identifier attribute to retrieve when generating the DN, usually also one of ```eppn``` or ```uid```
 * scope_suffix: a suffix to apply on scoped attributes like eduPersonScopedAffiliation and eduPersonUniqueId
@@ -34,6 +33,8 @@ The configuration resides inside a ```config``` variable and specifies basic ser
 * person_ocs: an array of all additional objectclasses to add to COPerson records
 * group_ocs: an array of all additional objectclasses to add to COGroup records
 * schemata: an array of all enabled objectclasses
+
+People are exported in an OU with DN ```ou=People,o=<CO>,<base DN>``` and groups are exported in an OU with DN ```ou=Groups,o=<CO>,<base DN>```. The ```<CO>``` is replaced with the name of the CO of which the COPerson or COGroup record is a part.
 
 For each enabled objectclass, a configuration hash/dictionary/keyed array can be specified with all attributes that need to be determined for that objectclass. Basic objectclasses supported by this plugin are:
 * ```person```
@@ -141,7 +142,7 @@ $config=array(
     ),
     'ldapPublicKey' => array(
       'sshPublicKey' => TRUE,  # required
-      'uid' => TRUE            # required
+      'uid' => 'uid'           # required
     )
   )
 );

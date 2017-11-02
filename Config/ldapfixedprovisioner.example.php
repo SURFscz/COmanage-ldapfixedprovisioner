@@ -1,8 +1,7 @@
 <?php
 $config=array(
   'fixedldap' => array(
-    'basedn'  => 'ou=People,dc=example,dc=com',
-    'groupdn' => 'ou=Groups,dc=example,dc=com',
+    'basedn'  => 'dc=example,dc=com',
     'dn_attribute_name' => 'uid',
     'dn_identifier_type' => 'uid',
 

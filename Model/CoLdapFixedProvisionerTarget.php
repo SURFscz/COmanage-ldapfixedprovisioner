@@ -789,7 +789,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
     }
 
     Configure::load('ldapfixedprovisioner');
-    $groupdn=Configure::read('fixedldap.groupdn');
+    $groupdn=Configure::read('fixedldap.basedn');
     $schemata=Configure::read('fixedldap.schemata');
 
     if($group) {
@@ -1482,20 +1482,20 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
    * @throws RuntimeException
    */
 
-  public function verifyLdapServer($url,$binddn,$password,$basedn,$groupdn) {
-    $results = $this->queryLdap($url,$binddn,$password,$basedn, "(objectclass=*)", array("dn"));
+  public function verifyLdapServer($url,$binddn,$password,$basedn, $co) {
+    $peopledn = "ou=People,o=$co,".$basedn;
+    $groupdn = "ou=Groups,o=$co,".$basedn;
+
+    $results = $this->queryLdap($url,$binddn,$password,$peopledn, "(objectclass=*)", array("dn"));
 
     if(count($results) < 1) {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.basedn'));
     }
 
     // Check for a Group DN if one is configured
-    if(!empty($groupdn)) {
-      $results = $this->queryLdap($url,$binddn,$password,$groupdn, "(objectclass=*)", array("dn"));
-
-      if(count($results) < 1) {
-        throw new RuntimeException(_txt('er.ldapfixedprovisioner.basedn.gr.none'));
-      }
+    $results = $this->queryLdap($url,$binddn,$password,$groupdn, "(objectclass=*)", array("dn"));
+    if(count($results) < 1) {
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.basedn.gr.none'));
     }
 
     return true;

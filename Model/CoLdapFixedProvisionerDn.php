@@ -83,13 +83,13 @@ class CoLdapFixedProvisionerDn extends AppModel {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'cn'));
     }
 
-    $groupdn = Configure::read('fixedldap.groupdn');
+    $groupdn = Configure::read('fixedldap.basedn');
     if(empty($groupdn)) {
       // Throw an exception... this should be defined
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "cn=" . $coGroupData['CoGroup']['name']. "," . $groupdn;
+    $dn = "cn=" . $coGroupData['CoGroup']['name']. ",ou=Groups,o=" . $coProvisiongTargetData['Co']['name'] . $basedn;
 
     return $dn;
   }
@@ -128,7 +128,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
         // need to check for Status=Active since ProvisionerBehavior will filter out
         // non-Active status.)
 
-        $dn = $dn_attribute_name . "=" . $identifier['identifier']. "," . $basedn;
+        $dn = $dn_attribute_name . "=" . $identifier['identifier']. ",ou=People,o=" . $coProvisiongTargetData['Co']['name'] . $basedn;
 
         break;
       }
@@ -162,10 +162,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
     $ret = array();
 
     $basedn = Configure::read('fixedldap.basedn');
-
-    if($mode == 'group') {
-      $basedn = Configure::read('fixedldap.groupdn');
-    }
 
     $attrs = explode(",", rtrim(str_replace($basedn, "", $dn), " ,"));
 
