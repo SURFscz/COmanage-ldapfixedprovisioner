@@ -59,10 +59,44 @@ class CoLdapFixedProvisionerDn extends AppModel {
       'required' => false,
       'allowEmpty' => true
     ),
+    'co_id' => array(
+      'rule' => 'numeric',
+      'required' => false,
+      'allowEmpty' => true
+    ),
     'dn' => array(
       'rule' => 'notBlank'
     )
   );
+
+  /**
+   * Assign a DN for a CO.
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array CO Provisioning Target data
+   * @param  Array CO data
+   * @return String DN
+   * @throws RuntimeException
+   */
+
+  public function assignCoDn($coProvisioningTargetData, $coData) {
+    $dn = "";
+
+    // For now, we always construct the DN using cn.
+    if(empty($coData['Co']['name'])) {
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'ou'));
+    }
+
+    $basedn = Configure::read('fixedldap.basedn');
+    if(empty($basedn)) {
+      // Throw an exception... this should be defined
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
+    }
+
+    $dn = "ou=" . $coData['Co']['name'] . ",".$basedn;
+
+    return $dn;
+  }
 
   /**
    * Assign a DN for a CO Group.
@@ -80,17 +114,16 @@ class CoLdapFixedProvisionerDn extends AppModel {
     // For now, we always construct the DN using cn.
 
     if(empty($coGroupData['CoGroup']['name'])) {
-      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'cn'));
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'ou'));
     }
 
-    $groupdn = Configure::read('fixedldap.basedn');
-    if(empty($groupdn)) {
+    $basedn = $this->obtainDn($coProvisioningData, $coGroupData, "co",true);
+    if(empty($basedn)) {
       // Throw an exception... this should be defined
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "cn=" . $coGroupData['CoGroup']['name']. ",ou=Groups,o=" . $coProvisiongTargetData['Co']['name'] . $basedn;
-
+    $dn = "cn=" . $coGroupData['CoGroup']['name']. ",ou=Groups,".$basedn['newdn'];
     return $dn;
   }
 
@@ -106,10 +139,10 @@ class CoLdapFixedProvisionerDn extends AppModel {
 
   public function assignPersonDn($coProvisioningTargetData, $coPersonData) {
     // Start by checking the DN configuration
-
     $dn_attribute_name = Configure::read('fixedldap.dn_attribute_name');
     $dn_identifier_type = Configure::read('fixedldap.dn_identifier_type');
-    $basedn = Configure::read('fixedldap.basedn');
+
+    $basedn = $this->obtainDn($coProvisioningTargetData, $coPersonData, "co",true);
     if(empty($dn_attribute_name) || empty($dn_identifier_type) || empty($basedn)) {
       // Throw an exception... these should be defined
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
@@ -127,8 +160,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
         // if multiple active identifiers of a given type are found. (We don't actually
         // need to check for Status=Active since ProvisionerBehavior will filter out
         // non-Active status.)
-
-        $dn = $dn_attribute_name . "=" . $identifier['identifier']. ",ou=People,o=" . $coProvisiongTargetData['Co']['name'] . $basedn;
+        $dn = $dn_attribute_name . "=" . $identifier['identifier']. ",ou=People," . $basedn['newdn'];
 
         break;
       }
@@ -256,11 +288,12 @@ class CoLdapFixedProvisionerDn extends AppModel {
     $newDnErr = null;
 
     // First see if we have already assigned a DN
-
     $args = array();
     $args['conditions']['CoLdapFixedProvisionerDn.co_ldap_fixed_provisioner_target_id'] = $coProvisioningTargetData['CoLdapFixedProvisionerTarget']['id'];
     if($mode == 'person') {
       $args['conditions']['CoLdapFixedProvisionerDn.co_person_id'] = $provisioningData['CoPerson']['id'];
+    } else if($mode == 'co') {
+      $args['conditions']['CoLdapFixedProvisionerDn.co_id'] = $provisioningData['Co']['id'];
     } else {
       $args['conditions']['CoLdapFixedProvisionerDn.co_group_id'] = $provisioningData['CoGroup']['id'];
     }
@@ -278,6 +311,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
     try {
       if($mode == 'person') {
         $newDn = $this->assignPersonDn($coProvisioningTargetData, $provisioningData);
+      } else if($mode == 'co') {
+        $newDn = $this->assignCoDn($coProvisioningTargetData, $provisioningData);
       } else {
         $newDn = $this->assignGroupDn($coProvisioningTargetData, $provisioningData);
       }
@@ -294,12 +329,13 @@ class CoLdapFixedProvisionerDn extends AppModel {
     if($assign) {
       // If the the DN doesn't match the existing DN (including if there is no
       // existing DN), update it
-
       if($newDn && ($curDn != $newDn)) {
         $newDnRecord = array();
         $newDnRecord['CoLdapFixedProvisionerDn']['co_ldap_fixed_provisioner_target_id'] = $coProvisioningTargetData['CoLdapFixedProvisionerTarget']['id'];
         if($mode == 'person') {
           $newDnRecord['CoLdapFixedProvisionerDn']['co_person_id'] = $provisioningData['CoPerson']['id'];
+        } else if ($mode == "co") {
+          $newDnRecord['CoLdapFixedProvisionerDn']['co_id'] = $provisioningData['Co']['id'];
         } else {
           $newDnRecord['CoLdapFixedProvisionerDn']['co_group_id'] = $provisioningData['CoGroup']['id'];
         }

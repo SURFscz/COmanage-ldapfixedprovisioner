@@ -47,7 +47,6 @@ class CoLdapFixedProvisionerTargetsController extends SPTController {
     $url=Configure::read('fixedldap.server.url');
     $binddn=Configure::read('fixedldap.server.binddn');
     $password=Configure::read('fixedldap.server.password');
-    $groupdn = Configure::read('fixedldap.groupdn');
     $basedn=Configure::read('fixedldap.basedn');
     $dn_attr=Configure::read('fixedldap.dn_attribute_name');
     $dn_ident=Configure::read('fixedldap.dn_identifier_type');
@@ -55,12 +54,18 @@ class CoLdapFixedProvisionerTargetsController extends SPTController {
     if(  $url===null || $binddn === null || $password === null) {
         $this->Flash->set(_txt('er.ldapfixedprovisioner.config'), array('key' => 'error'));
         return false;
-    } else if( $groupdn === null || $basedn === null || $dn_attr === null || $dn_ident === null) {
+    } else if( $basedn === null || $dn_attr === null || $dn_ident === null) {
         $this->Flash->set(_txt('er.ldapfixedprovisioner.dn.config'), array('key' => 'error'));
         return false;
     } else {
       try {
-        $this->CoLdapFixedProvisionerTarget->verifyLdapServer($url,$binddn,$password,$basedn,$groupdn);
+        $coid = $reqdata["CoLdapFixedProvisionerTarget"]["co_id"];
+        $args = array();
+        $args['conditions']['Co.id'] = intval($coid);
+        $co = $this->Co->find('first', $args);
+        $name = $co["Co"]["name"];
+
+        $this->CoLdapFixedProvisionerTarget->verifyLdapServer($url,$binddn,$password,$basedn,$name);
       }
       catch(RuntimeException $e) {
         $this->Flash->set($e->getMessage(), array('key' => 'error'));

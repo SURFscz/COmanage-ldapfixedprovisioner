@@ -755,7 +755,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
           // Convert this to a delete operation. Basically we (may) have a record in LDAP,
           // but the person is no longer active. Don't delete the DN though, since
           // the underlying person was not deleted.
-
           $delete = true;
         } else {
           // An update may cause an existing person to be written to LDAP for the first time
@@ -813,6 +812,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
       // This mostly never matches because $dns['newdnerr'] will usually be set
       throw new RuntimeException($e->getMessage());
     }
+
     if($person
        && $assigndn
        && !$dns['newdn']
@@ -867,19 +867,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
     $url = Configure::read('fixedldap.server.url');
     $binddn=Configure::read('fixedldap.server.binddn');
     $password=Configure::read('fixedldap.server.password');
-    $cxn = $this->ldap_connect($url);
-
-    if(!$cxn) {
-      throw new RuntimeException(_txt('er.ldapfixedprovisioner.connect'), 0x5b /*LDAP_CONNECT_ERROR*/);
-    }
-
-    // Use LDAP v3 (this could perhaps become an option at some point), although note
-    // that ldap_rename (used below) *requires* LDAP v3.
-    $this->ldap_set_option(LDAP_OPT_PROTOCOL_VERSION, 3);
-
-    if(!$this->ldap_bind($binddn, $password)) {
+    $basedn=Configure::read('fixedldap.basedn');
+    if(!$this->connectLdap($url,$binddn, $password)) {
+      // exception is already thrown anyway
       throw new RuntimeException($this->ldap_error(), $this->ldap_errno());
     }
+
+    $this->verifyOrCreateCo($url,$binddn,$password,$basedn,$provisioningData['Co']['name']);
 
     if($delete) {
       // Delete any previous entry. For now, ignore any error.
@@ -941,7 +935,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
 //                                              $provisioningData[($person ? 'CoPerson' : 'CoGroup')]['id'],
 //                                              $dns['newdnerr'])));
       }
-
       if(!$this->ldap_mod_replace($dns['newdn'], $attributes)) {
         if($this->ldap_errno() == 0x20 /*LDAP_NO_SUCH_OBJECT*/) {
           // Change to an add operation. We call ourselves recursively because
@@ -949,7 +942,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
           // an empty attribute, whereas Add throws an error if that is the case.
           // As a side effect, we'll rebind to the LDAP server, but this should
           // be a pretty rare event.
-
           $this->provision($coProvisioningTargetData,
                            ($person
                             ? ProvisioningActionEnum::CoPersonAdded
@@ -987,6 +979,38 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
   }
 
   /**
+   * Connect to an LDAP server.
+   *
+   * @since  COmanage Registry vTODO
+   * @param  String Server URL
+   * @param  String Bind DN
+   * @param  String Password
+   * @param  String Base DN
+   * @param  String Search filter
+   * @param  Array Attributes to return (or null for all)
+   * @return Array Search results
+   * @throws RuntimeException
+   */
+
+  protected function connectLdap($serverUrl,$bindDn,$password) {
+    if($this->ldap_is_connected()) return TRUE;
+
+    $cxn = $this->ldap_connect($serverUrl);
+
+    if(!$cxn) {
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.connect'), 0x5b /*LDAP_CONNECT_ERROR*/);
+    }
+
+    // Use LDAP v3 (this could perhaps become an option at some point)
+    $this->ldap_set_option(LDAP_OPT_PROTOCOL_VERSION, 3);
+
+    if(!$this->ldap_bind($bindDn, $password)) {
+      throw new RuntimeException($this->ldap_error(), $this->ldap_errno());
+    }
+    return TRUE;
+  }
+
+  /**
    * Query an LDAP server.
    *
    * @since  COmanage Registry vTODO
@@ -1002,14 +1026,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
 
   protected function queryLdap($serverUrl,$bindDn,$password, $baseDn, $filter, $attributes=array()) {
     $ret = array();
-    $cxn = $this->ldap_connect($serverUrl);
-
-    if(!$cxn) {
-      throw new RuntimeException(_txt('er.ldapfixedprovisioner.connect'), 0x5b /*LDAP_CONNECT_ERROR*/);
+    if(!$this->connectLdap($serverUrl, $bindDn, $password)) {
+      // we are throwing an exception instead of returning FALSE, but nevertheless...
+      return $ret;
     }
-
-    // Use LDAP v3 (this could perhaps become an option at some point)
-    $this->ldap_set_option(LDAP_OPT_PROTOCOL_VERSION, 3);
 
     if(!$this->ldap_bind($bindDn, $password)) {
       throw new RuntimeException($this->ldap_error(), $this->ldap_errno());
@@ -1483,8 +1503,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
    */
 
   public function verifyLdapServer($url,$binddn,$password,$basedn, $co) {
-    $peopledn = "ou=People,o=$co,".$basedn;
-    $groupdn = "ou=Groups,o=$co,".$basedn;
+    $this->verifyOrCreateCo($url,$binddn,$password,$basedn,$co);
+    $peopledn = "ou=People,ou=$co,".$basedn;
+    $groupdn = "ou=Groups,ou=$co,".$basedn;
 
     $results = $this->queryLdap($url,$binddn,$password,$peopledn, "(objectclass=*)", array("dn"));
 
@@ -1496,6 +1517,43 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
     $results = $this->queryLdap($url,$binddn,$password,$groupdn, "(objectclass=*)", array("dn"));
     if(count($results) < 1) {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.basedn.gr.none'));
+    }
+
+    return true;
+  }
+
+  /**
+   * Test the existance of the main CO ou or add it
+   * This routine requires that the LDAP bind was made (either in provision or in queryLdap)
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array CO data
+   * @return Boolean True
+   * @throws RuntimeException
+   */
+  public function verifyOrCreateCo($url,$binddn,$password, $basedn, $coData) {
+    if(!$this->connectLdap($url,$binddn,$password)) {
+      return FALSE;
+    }
+    $dn = "ou=$coData,$basedn";
+    if(!$this->ldap_add($dn,array("ou"=>$coData,"objectClass"=>"organizationalUnit"))) {
+      if($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
+        throw new RuntimeException($this->ldap_error(), $this->ldap_errno());
+      }
+    }
+    else {
+      // If the ldap_add was succesfull, the OU did not exist yet, so we need to add the
+      // underlying OUs for People and Groups as well
+      if(!$this->ldap_add("ou=People,$dn",array("ou"=>"People","objectClass"=>"organizationalUnit"))) {
+        if($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
+          throw new RuntimeException($this->ldap_error(), $this->ldap_errno());
+        }
+      }
+      if(!$this->ldap_add("ou=Groups,$dn",array("ou"=>"Groups","objectClass"=>"organizationalUnit"))) {
+        if($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
+          throw new RuntimeException($this->ldap_error(), $this->ldap_errno());
+        }
+      }
     }
 
     return true;

@@ -38,9 +38,13 @@ class LdapServiceBehavior extends ModelBehavior {
       $this->settings[$Model->alias] = array_merge($this->settings[$Model->alias], (array)$settings);
     }
 
+    public function ldap_is_connected(Model $Model) {
+      return $this->settings[$Model->alias]["cxn"] !== FALSE && $this->settings[$Model->alias]["cxn"] !== null;
+    }
+
     public function ldap_connect(Model $Model, $host) {
       $this->settings[$Model->alias]["cxn"] = ldap_connect($host);
-      return $this->settings[$Model->alias]["cxn"] !== FALSE;
+      return $this->settings[$Model->alias]["cxn"] !== FALSE && $this->settings[$Model->alias]["cxn"] !== null;
     }
 
     public function ldap_set_option(Model $Model, $opt, $val) {
@@ -53,7 +57,7 @@ class LdapServiceBehavior extends ModelBehavior {
 
     public function ldap_unbind(Model $Model) {
      ldap_unbind($this->settings[$Model->alias]["cxn"]);
-     $this->settings[$Model->alias]["cxn"]=null;
+     $this->settings[$Model->alias]["cxn"]=FALSE;
      return TRUE;
     }
 

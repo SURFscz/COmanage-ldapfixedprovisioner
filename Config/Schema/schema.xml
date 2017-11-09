@@ -55,7 +55,10 @@
     <field name="co_group_id" type="I">
       <constraint>REFERENCES cm_co_groups(id)</constraint>
     </field>
-    <field name="dn" type="C" size="256" />
+    <field name="co_id" type="I">
+      <constraint>REFERENCES cm_co(id)</constraint>
+    </field>
+    <field name="dn" type="C" size="4096" />
     <field name="created" type="T" />
     <field name="modified" type="T" />
 
@@ -71,4 +74,5 @@
       <unique />
     </index>
   </table>
+
 </schema>
