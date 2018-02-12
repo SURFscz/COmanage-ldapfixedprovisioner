@@ -89,7 +89,7 @@ $config=array(
     ),
     'ldapPublicKey' => array(
       'sshPublicKey' => TRUE,  # required
-      'uid' => 'uid'            # required
+      'uid' => 'uid;org'       # required
     )
   )
 );

@@ -131,7 +131,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
 
       if($group && empty($groupMembers) && in_array($oc, array('groupOfNames','eduMember'))) {
         // As an interim solution to CO-1348 we'll pull all group members here (since we no longer get them)
-
         $args = array();
         $args['conditions']['CoGroupMember.co_group_id'] = $provisioningData['CoGroup']['id'];
         $args['contain'] = false;
@@ -1453,7 +1452,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget {
           // extract type and origin from the value definition
           $type="";
           $use_org=FALSE;
-          if(is_array($val)) {
+          if(is_string($val)) {
             $values = explode(';',$val,1);
             if(is_array($values) && sizeof($values)>0) {
               $type=$values[0];
