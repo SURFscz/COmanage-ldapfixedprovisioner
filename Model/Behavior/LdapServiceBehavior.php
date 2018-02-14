@@ -28,68 +28,88 @@
 */
 
 App::uses('ModelBehavior', 'Model');
-class LdapServiceBehavior extends ModelBehavior {
+class LdapServiceBehavior extends ModelBehavior
+{
     public $settings=array();
 
-    public function setup(Model $Model, $settings = array()) {
-      if (!isset($this->settings[$Model->alias])) {
-        $this->settings[$Model->alias] = array("cxn"=>null);
-      }
-      $this->settings[$Model->alias] = array_merge($this->settings[$Model->alias], (array)$settings);
+    public function setup(Model $Model, $settings = array())
+    {
+        if (!isset($this->settings[$Model->alias])) {
+            $this->settings[$Model->alias] = array("cxn"=>null);
+        }
+        $this->settings[$Model->alias] = array_merge($this->settings[$Model->alias], (array)$settings);
     }
 
-    public function ldap_is_connected(Model $Model) {
-      return $this->settings[$Model->alias]["cxn"] !== FALSE && $this->settings[$Model->alias]["cxn"] !== null;
+    public function ldap_is_connected(Model $Model)
+    {
+        return $this->settings[$Model->alias]["cxn"] !== false && $this->settings[$Model->alias]["cxn"] !== null;
     }
 
-    public function ldap_connect(Model $Model, $host) {
-      $this->settings[$Model->alias]["cxn"] = ldap_connect($host);
-      return $this->settings[$Model->alias]["cxn"] !== FALSE && $this->settings[$Model->alias]["cxn"] !== null;
+    public function ldap_connect(Model $Model, $host)
+    {
+        $this->settings[$Model->alias]["cxn"] = @ldap_connect($host);
+        return $this->settings[$Model->alias]["cxn"] !== false && $this->settings[$Model->alias]["cxn"] !== null;
     }
 
-    public function ldap_set_option(Model $Model, $opt, $val) {
-      return ldap_set_option($this->settings[$Model->alias]["cxn"], $opt, $val);
+    public function ldap_set_option(Model $Model, $opt, $val)
+    {
+        return @ldap_set_option($this->settings[$Model->alias]["cxn"], $opt, $val);
     }
 
-    public function ldap_bind(Model $Model, $binddn,$password) {
-      return ldap_bind($this->settings[$Model->alias]["cxn"], $binddn, $password);
+    public function ldap_bind(Model $Model, $binddn, $password)
+    {
+        return @ldap_bind($this->settings[$Model->alias]["cxn"], $binddn, $password);
     }
 
-    public function ldap_unbind(Model $Model) {
-     ldap_unbind($this->settings[$Model->alias]["cxn"]);
-     $this->settings[$Model->alias]["cxn"]=FALSE;
-     return TRUE;
+    public function ldap_unbind(Model $Model)
+    {
+        @ldap_unbind($this->settings[$Model->alias]["cxn"]);
+        $this->settings[$Model->alias]["cxn"]=false;
+        return true;
     }
 
-    public function ldap_search(Model $Model, $baseDn, $filter, $attributes) {
-      return ldap_search($this->settings[$Model->alias]["cxn"], $baseDn, $filter, $attributes);
+    public function ldap_search(Model $Model, $baseDn, $filter, $attributes)
+    {
+        return @ldap_search($this->settings[$Model->alias]["cxn"], $baseDn, $filter, $attributes);
     }
 
-    public function ldap_get_entries(Model $Model, $s) {
-      return ldap_get_entries($this->settings[$Model->alias]["cxn"], $s);
+    public function ldap_get_entries(Model $Model, $s)
+    {
+        return @ldap_get_entries($this->settings[$Model->alias]["cxn"], $s);
     }
 
-    public function ldap_error(Model $Model) {
-      return ldap_error($this->settings[$Model->alias]["cxn"]);
+    public function ldap_error(Model $Model)
+    {
+        @ldap_get_option($this->settings[$Model->alias]["cxn"], LDAP_OPT_ERROR_STRING, $msg2);
+        $msg = @ldap_error($this->settings[$Model->alias]["cxn"]);
+        if (strlen($msg2)) {
+            $msg .=" ($msg2)";
+        }
+        return $msg;
     }
 
-    public function ldap_errno(Model $Model) {
-      return ldap_errno($this->settings[$Model->alias]["cxn"]);
+    public function ldap_errno(Model $Model)
+    {
+        return @ldap_errno($this->settings[$Model->alias]["cxn"]);
     }
 
-    public function ldap_add(Model $Model, $dn, $attributes) {
-      return ldap_add($this->settings[$Model->alias]["cxn"], $dn, $attributes);
+    public function ldap_add(Model $Model, $dn, $attributes)
+    {
+        return @ldap_add($this->settings[$Model->alias]["cxn"], $dn, $attributes);
     }
 
-    public function ldap_rename(Model $Model, $olddn, $newdn) {
-      return ldap_rename($this->settings[$Model->alias]["cxn"], $olddn, $newdn, null, true);
+    public function ldap_rename(Model $Model, $olddn, $newdn)
+    {
+        return @ldap_rename($this->settings[$Model->alias]["cxn"], $olddn, $newdn, null, true);
     }
 
-    public function ldap_mod_replace(Model $Model, $dn, $attributes) {
-      return ldap_mod_replace($this->settings[$Model->alias]["cxn"], $dn, $attributes);
+    public function ldap_mod_replace(Model $Model, $dn, $attributes)
+    {
+        return @ldap_mod_replace($this->settings[$Model->alias]["cxn"], $dn, $attributes);
     }
 
-    public function ldap_delete(Model $Model, $dn) {
-      return ldap_delete($this->settings[$Model->alias]["cxn"], $dn);
+    public function ldap_delete(Model $Model, $dn)
+    {
+        return @ldap_delete($this->settings[$Model->alias]["cxn"], $dn);
     }
 }
