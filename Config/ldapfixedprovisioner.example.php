@@ -3,7 +3,6 @@ $config=array(
   'fixedldap' => array(
     'basedn'  => 'dc=example,dc=com',
     'dn_attribute_name' => 'uid',
-    'dn_identifier_type' => 'uid',
 
     # set an optional scope suffix
     #'scope_suffix' => '',

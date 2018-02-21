@@ -37,15 +37,46 @@ class ColdapfixedprovisionerdnFixture extends CakeTestFixture {
         array(
             "id" => 1,
             "co_ldap_fixed_provisioner_target_id" => 1,
+            "co_person_id" => 1,
+            "co_group_id" => null,
+            "co_id" => null,
+            "dn" => "eppn=test@example.com,ou=People,ou=CO 1,dc=example,dc=com",
+            "created" => "1970-01-01 00:00:00",
+            "modified" => "1970-01-01 00:00:00"
+        ),
+        array(
+            "id" => 2,
+            "co_ldap_fixed_provisioner_target_id" => 1,
+            "co_person_id" => 2,
+            "co_group_id" => null,
+            "co_id" => null,
+            "dn" => "eppn=test3@example.com,ou=People,ou=CO 1,dc=example,dc=com",
+            "created" => "1970-01-01 00:00:00",
+            "modified" => "1970-01-01 00:00:00"
+        ),
+        array(
+            "id" => 3,
+            "co_ldap_fixed_provisioner_target_id" => 1,
+            "co_person_id" => null,
+            "co_group_id" => 103,
+            "co_id" => null,
+            "dn" => "cn=CO:members,ou=Groups,ou=CO 1,dc=example,dc=com",
+            "created" => "1970-01-01 00:00:00",
+            "modified" => "1970-01-01 00:00:00"
+        ),
+        array(
+            "id" => 4,
+            "co_ldap_fixed_provisioner_target_id" => 1,
             "co_person_id" => null,
             "co_group_id" => null,
-            "dn" => "",
+            "co_id" => 1,
+            "dn" => "ou=CO 1,dc=example,dc=com",
             "created" => "1970-01-01 00:00:00",
             "modified" => "1970-01-01 00:00:00"
         ),
       );
 
-   //   $this->records = $records;
+      $this->records = $records;
 
       parent::init();
     }

@@ -60,14 +60,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   // Cache of schema plugins, populated by supportedAttributes
   protected $plugins = array();
 
-  // LDAP resource object
-  private $_ldap_resource=null;
-
   /**
    * Assemble attributes for an LDAP record.
    *
    * @since  COmanage Registry v0.8
-   * @param  Array                  $coProvisioningTargetData CO Provisioning Target data
    * @param  Array                  $provisioningData         CO Person or CO Group Data used for provisioning
    * @param  Boolean                $modify                   Whether or not this will be for a modify operation
    * @param  Array                  $dnAttributes             Attributes used to generate the DN for this person, as returned by CoLdapProvisionerDn::dnAttributes
@@ -77,11 +73,14 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   protected function assembleAttributes($coProvisioningTargetData, $provisioningData, $modify, $dnAttributes)
   {
     // First see if we're working with a Group record or a Person record
+    // If person is set, we are dealing with a CoPerson related provisioning. For
+    // strictly CoGroup related provisioning, person is always false
     $person = isset($provisioningData['CoPerson']['id']);
     $group = isset($provisioningData['CoGroup']['id']);
     $uam = Configure::read('fixedldap.remove_unused');
     $uam = ($uam !== null && $uam) ? true : false;
     $scope_suffix = Configure::read('fixedldap.scope_suffix');
+    $this->dev_log("provisioning for person: ".($person?"TRUE":"FALSE")." and group: ".($group?"TRUE":"FALSE"));
 
     // Marshalled attributes ready for export
     $attributes = array();
@@ -92,11 +91,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // Full set of supported attributes (not what's configured, but including any plugin schemas)
     $supportedAttributes = $this->supportedAttributes();
     $configuredAttributes = $this->configuredAttributes();
-    $this->dev_log("configured attributes: ".json_encode($configuredAttributes));
+    //$this->dev_log("configured attributes: ".json_encode($configuredAttributes));
 
     // Note we don't need to check for inactive status where relevant since
     // ProvisionerBehavior will remove those from the data we get.
     foreach (array_keys($supportedAttributes) as $oc) {
+      $this->dev_log("objectclass $oc");
       // First see if this objectclass is handled by a plugin
       if (!empty($supportedAttributes[$oc]['plugin'])) {
         // Ask the plugin to assemble the attributes for this objectclass for us.
@@ -126,7 +126,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
       // Skip objectclasses that aren't relevant for the sort of data we're working with
       if (($person && $oc == 'groupOfNames')
-         || ($group && !in_array($oc, array('groupOfNames','eduMember')))) {
+         || (!$person && !in_array($oc, array('groupOfNames','eduMember')))) {
         continue;
       }
 
@@ -137,6 +137,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         $args['contain'] = false;
 
         $groupMembers = $this->CoLdapFixedProvisionerDn->CoGroup->CoGroupMember->find('all', $args);
+        $this->dev_log("retrieved ".sizeof($groupMembers). " group members");
       }
 
       // Iterate across objectclasses. All configured objectclasses are required
@@ -457,33 +458,34 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             // hasMember and isMember of are both part of the eduMember objectclass, which can apply
             // to both people and group entries. Check what type of data we're working with for both.
             case 'hasMember':
-              if ($group && !empty($provisioningData['CoGroup']['id'])) {
-                $members = $this->CoLdapFixedProvisionerDn
-                                ->CoGroup
-                                ->CoGroupMember
-                                ->mapCoGroupMembersToIdentifiers($groupMembers, $targetType);
-
-                if (!empty($members)) {
+              if (!$person) {
+                $attributes[$attr] = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers);
+                if (empty($attributes[$attr]) && $modify) {
                   // Unlike member, hasMember is not required. However, like owner, we can't have
                   // an empty list.
-                  $attributes[$attr] = $members;
-                } elseif ($modify) {
-                  // Unless we're modifying an entry, in which case an empty list
-                  // says to remove any previous entry
                   $attributes[$attr] = array();
                 }
               }
               break;
             case 'isMemberOf':
               if ($person) {
+                $this->dev_log('isMemberOf for a person record');
                 if (!empty($provisioningData['CoGroupMember'])) {
                   foreach ($provisioningData['CoGroupMember'] as $gm) {
+                    $this->dev_log('checking group member '.json_encode($gm));
                     if (isset($gm['member']) && $gm['member']
                        && !empty($gm['CoGroup']['name'])) {
-                      $attributes['isMemberOf'][] = $gm['CoGroup']['name'];
+                      $dt=array_merge($gm,array('Co'=>$provisioningData['Co']));
+                      $this->dev_log('calling obtainDn with '.json_encode($dt));
+                      $dn=$this->CoLdapFixedProvisionerDn->obtainDn($coProvisioningTargetData, $dt,'group',false);
+                      $this->dev_log('dn returns '.json_encode($dn));
+                      if(!empty($dn['newdn']))
+                      {
+                        $attributes['isMemberOf'][] = $dn['newdn'];
+                      }
                     }
                   }
-                }
+                } else $this->dev_log('no groupmember records found');
 
                 if ($modify && empty($attributes[$attr])) {
                   $attributes[$attr] = array();
@@ -493,6 +495,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             case 'member':
               $attributes[$attr] = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers);
               if (empty($attributes[$attr])) {
+                $this->dev_log('group has no members');
                 // groupofnames requires at least one member
                 // XXX seems like a better option would be to deprovision the group?
                 throw new UnderflowException('member');
@@ -598,7 +601,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
     // Add additionally configured objectclasses
     $group_ocs = Configure::read('fixedldap.group_ocs');
-    if ($group && !empty($group_ocs)) {
+    if (!$person && !empty($group_ocs)) {
       $attributes['objectclass'] = array_merge($attributes['objectclass'], $group_ocs);
     }
 
@@ -701,27 +704,39 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $add      = false;
     $modify   = false;
     $rename   = false;
+
+    // determine if the operation is for a person or for a group
     $person   = false;
-    $group    = false;
 
-    if (!empty($provisioningData['CoGroup']['id'])) {
-      $group = true;
+    if(!isset($provisioningData['Co'])) {
+      $data = $this->CoProvisioningTarget->Co->find('first',array("conditions"=>array("Co.id"=>$provisioningData[$person ? "CoPerson": "CoGroup"]['co_id'])));
+      $this->dev_log("copying Co data");
+      $provisioningData['Co'] = $data['Co'];
     }
 
-    if (!empty($provisioningData['CoPerson']['id'])) {
-      $person = true;
-    }
+    $this->dev_log("provisioning $op");// with data ".json_encode($provisioningData));
 
     switch ($op) {
     case ProvisioningActionEnum::CoPersonAdded:
+      // this state should only apply to a person model
+      if(empty($provisioningData['CoPerson']['id'])) {
+        $this->log('PersonAdded operation without CoPersion data','debug');
+        return true;
+      }
       // On add, we issue a delete (for housekeeping purposes, it will mostly fail)
       // and then an add. Note that various other operations will be promoted from
       // modify to add if there is no record in LDAP, so don't make this modify.
       $assigndn = true;
       $delete = true;
       $add = true;
+      $person = true;
       break;
     case ProvisioningActionEnum::CoPersonDeleted:
+      // this state should only apply to a person model
+      if(empty($provisioningData['CoPerson']['id'])) {
+        $this->log('PersonDeleted operation without CoPersion data','debug');
+        return true;
+      }
       // Because of the complexity of how related models are deleted and the
       // provisioner behavior invoked, we do not allow dependent=true to delete
       // the DN. Instead, we manually delete it
@@ -735,15 +750,28 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     case ProvisioningActionEnum::CoPersonPipelineProvisioned:
     case ProvisioningActionEnum::CoPersonReprovisionRequested:
     case ProvisioningActionEnum::CoPersonUnexpired:
+      // The Unexpired op can apply to group membership as well, but the CoPerson
+      // information must be present
+      if(empty($provisioningData['CoPerson']['id'])) {
+        $this->log('Person state-change (add) operation without CoPersion data','debug');
+        return true;
+      }
       // For these actions, there may be an existing record with externally managed
       // attributes that we don't want to change. Treat them all as modifies.
       $assigndn = true;
       $modify = true;
+      $person = true;
       break;
     case ProvisioningActionEnum::CoPersonExpired:
     case ProvisioningActionEnum::CoPersonEnteredGracePeriod:
     case ProvisioningActionEnum::CoPersonUnexpired:
     case ProvisioningActionEnum::CoPersonUpdated:
+      // These ops can apply to group membership as well, in which case the relevant
+      // CoPerson data is marshalled in
+      if(empty($provisioningData['CoPerson']['id'])) {
+        $this->log('Person state-change (remove) operation without CoPersion data','debug');
+        return true;
+      }
       if (!in_array(
         $provisioningData['CoPerson']['status'],
         array(StatusEnum::Active,
@@ -761,22 +789,44 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         $assigndn = true;
         $modify = true;
       }
+      $person = true;
       break;
     case ProvisioningActionEnum::CoGroupAdded:
+      // this state should only apply to a group model
+      if(empty($provisioningData['CoGroup']['id'])) {
+        $this->log('GroupAdded operation without CoGroup data','debug');
+        return true;
+      }
       $assigndn = true;
       $delete = false;  // Arguably, this should be true to clear out any prior debris
       $add = true;
       break;
     case ProvisioningActionEnum::CoGroupDeleted:
+      // this state should only apply to a group model
+      if(empty($provisioningData['CoGroup']['id'])) {
+        $this->log('GroupDeleted operation without CoGroup data','debug');
+        return true;
+      }
       $delete = true;
       $deletedn = true;
-      $group = true;
       break;
     case ProvisioningActionEnum::CoGroupUpdated:
+      // this state is triggered when group members are added or removed
+      // so this could apply to both person or group, but the group data
+      // should be present
+      if(empty($provisioningData['CoGroup']['id'])) {
+        $this->log('GroupUpdated operation without CoGroup data','debug');
+        return true;
+      }
       $assigndn = true;
       $modify = true;
       break;
     case ProvisioningActionEnum::CoGroupReprovisionRequested:
+      // this state should only apply to a group model
+      if(empty($provisioningData['CoGroup']['id'])) {
+        $this->log('GroupReprovision operation without CoGroup data','debug');
+        return true;
+      }
       $assigndn = true;
       $delete = true;
       $add = true;
@@ -786,16 +836,17 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       break;
     }
 
-    Configure::load('ldapfixedprovisioner');
+    if(!Configure::read('fixedldap')) Configure::load('ldapfixedprovisioner');
     $groupdn=Configure::read('fixedldap.basedn');
     $schemata=Configure::read('fixedldap.schemata');
 
-    if ($group) {
-      // If this is a group action and no Group Base DN is defined, or oc_groupofnames is false,
+    if (!$person) {
+      // If this is a group action and no Group Base DN is defined, or the object class groupOfNames is not generated,
       // then don't try to do anything.
       if (empty($groupdn)
           || !is_array($schemata)
-          || !isset($schemata['groupOfNames'])) {
+          || !in_array('groupOfNames',$schemata)) {
+            $this->dev_log("returning early because '$groupdn' not set or groupOfNames not in schema list: ".json_encode($schemata));
         return true;
       }
     }
@@ -809,6 +860,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 $provisioningData,
                 $person ? 'person' : 'group',
                 $assigndn);
+      $this->dev_log("retrieved new dns for person/group: ".json_encode($dns));
     } catch (RuntimeException $e) {
       // This mostly never matches because $dns['newdnerr'] will usually be set
       throw new RuntimeException($e->getMessage());
@@ -835,7 +887,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // the attribute array
       try {
         $dnAttributes = $this->CoLdapFixedProvisionerDn->dnAttributes(
-                            $coProvisioningTargetData,
                             $dns['newdn'],
                             $person ? 'person' : 'group');
       } catch (RuntimeException $e) {
@@ -849,11 +900,11 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                           $provisioningData,
                           $modify,
                           $dnAttributes);
-        $this->dev_log("coperson $cid attributes found: ".json_encode($attributes));
+        $this->dev_log("object id $cid attributes found: ".json_encode($attributes));
       } catch (UnderflowException $e) {
         // We have a group with no members. Convert to a delete operation since
         // groupOfNames requires at least one member.
-        if ($group) {
+        if (!$person) {
           $add = false;
           $modify = false;
           $delete = true;
@@ -871,7 +922,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       return false;
     }
 
-    $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $provisioningData['Co']['name']);
+    list( $peopledn, $groupdn) = $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $provisioningData['Co']['name']);
 
     if ($delete) {
       // Delete any previous entry. For now, ignore any error.
@@ -900,15 +951,16 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
         $this->log(_txt('er.ldapfixedprovisioner.rename1')." (coperson: $cid)", 'debug');
+        $this->ldap_unbind();
         return true;
       }
 
       // Perform the rename operation before we try to do anything else. Note that
       // the old DN is complete while the new DN is relative.
       if ($person) {
-        $basedn = Configure::read('fixedldap.basedn');
+        $basedn = $peopledn;
       } else {
-        $basedn = Configure::read('fixedldap.groupdn');
+        $basedn = $groupdn;
       }
 
       $newrdn = rtrim(str_replace($basedn, "", $dns['newdn']), " ,");
@@ -918,6 +970,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         // now inconsistent with LDAP
         $this->log(_txt('er.ldapfixedprovisioner.rename2').": ".$this->ldap_error() . " (".$this->ldap_errno() .", coperson: $cid)", 'error');
         $this->dev_log(_txt('er.ldapfixedprovisioner.rename2').": ".$this->ldap_error() . " (".$this->ldap_errno() .", coperson: $cid)");
+        $this->ldap_unbind();
         return false;
       }
       else {
@@ -929,6 +982,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
         $this->log(_txt('er.ldapfixedprovisioner.rename1')." (coperson: $cid)", 'debug');
+        $this->ldap_unbind();
         return true;
       }
       if (!$this->ldap_mod_replace($dns['newdn'], $attributes)) {
@@ -945,6 +999,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         } else {
           $this->log(_txt('er.ldapfixedprovisioner.modify').": ".$this->ldap_error() . " (".$this->ldap_errno() .", coperson: $cid)", 'error');
           $this->dev_log(_txt('er.ldapfixedprovisioner.modify').": ".$this->ldap_error() . " (".$this->ldap_errno() .", coperson: $cid)");
+          $this->ldap_unbind();
           return false;
         }
       }
@@ -959,12 +1014,14 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
         $this->log(_txt('er.ldapfixedprovisioner.rename1')." (coperson: $cid)", 'debug');
+        $this->ldap_unbind();
         return true;
       }
 
       if (!$this->ldap_add($dns['newdn'], $attributes)) {
         $this->log(_txt('er.ldapfixedprovisioner.add').": ".$this->ldap_error() . " (".$this->ldap_errno() .", coperson: $cid)", 'error');
         $this->dev_log(_txt('er.ldapfixedprovisioner.add').": ".$this->ldap_error() . " (".$this->ldap_errno() .", coperson: $cid)");
+        $this->ldap_unbind();
         return false;
       }
       else
@@ -1075,7 +1132,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       $args['conditions']['CoLdapFixedProvisionerDn.co_group_id'] = $coGroupId;
     }
 
-    Configure::load('ldapfixedprovisioner');
+    if(!Configure::read('fixedldap')) Configure::load('ldapfixedprovisioner');
     $dnRecord = $this->CoLdapFixedProvisionerDn->find('first', $args);
 
     if (!empty($dnRecord)) {
@@ -1435,8 +1492,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           // extract type and origin from the value definition
           $type="";
           $use_org=false;
+          $this->dev_log('read value '.$key.'='.$val);
           if (is_string($val)) {
-            $values = explode(';', $val, 1);
+            $values = explode(';', $val, 2);
+            $this->dev_log("values array is ".json_encode($values));
             if (is_array($values) && sizeof($values)>0) {
               $type=$values[0];
             }
@@ -1512,33 +1571,39 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
   {
-    if (!$this->connectLdap($url, $binddn, $password)) {
-      return false;
-    }
     $dn = "ou=$coData,$basedn";
+    $peopledn = "ou=People,$dn";
+    $groupdn="ou=Groups,$dn";
+    $retval=array("","");
+
+    if (!$this->connectLdap($url, $binddn, $password)) {
+      return $retval;
+    }
+
     if (!$this->ldap_add($dn, array("ou"=>$coData,"objectClass"=>"organizationalUnit"))) {
       if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
         $this->log(_txt('er.ldapfixedprovisioner.add1').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-        return false;
+        return $retval;
       }
     } else {
       // If the ldap_add was succesfull, the OU did not exist yet, so we need to add the
       // underlying OUs for People and Groups as well
-      if (!$this->ldap_add("ou=People,$dn", array("ou"=>"People","objectClass"=>"organizationalUnit"))) {
+
+      if (!$this->ldap_add($peopledn, array("ou"=>"People","objectClass"=>"organizationalUnit"))) {
         if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
           $this->log(_txt('er.ldapfixedprovisioner.add2').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-          return false;
+          return $retval;
         }
       }
-      if (!$this->ldap_add("ou=Groups,$dn", array("ou"=>"Groups","objectClass"=>"organizationalUnit"))) {
+      if (!$this->ldap_add($groupdn, array("ou"=>"Groups","objectClass"=>"organizationalUnit"))) {
         if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
           $this->log(_txt('er.ldapfixedprovisioner.add3').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-          return false;
+          return $retval;
         }
       }
     }
 
-    return true;
+    return array($peopledn,$groupdn);
   }
 
   // convenience function to enable/disable the development/trace logs
