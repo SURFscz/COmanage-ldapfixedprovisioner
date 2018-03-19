@@ -4,11 +4,14 @@ $config=array(
     'basedn'  => 'dc=example,dc=com',
     'dn_attribute_name' => 'uid',
 
-    # set an optional scope suffix
-    #'scope_suffix' => '',
+    # set an optional scope suffix (default: empty)
+    #'scope_suffix' => '{CO}',
 
-    # remove unused attributes (default FALSE)
+    # remove unused attributes (default: FALSE)
     #'remove_unused' => FALSE,
+
+    # use attribute options (default: FALSE)
+    #'attr_opts' => FALSE,
 
     'server' => array(
       'url' => 'ldap:///',
@@ -37,6 +40,7 @@ $config=array(
       'sn' => 'official',              # required
       'cn' => 'official',              # required
 #     'pwdAccountLockedTime' => TRUE,  # optional
+#     'userPassword' => TRUE,          # optional
     ),
     'organizationalPerson' => array (
 #     'title' => TRUE,                      # optional
@@ -58,6 +62,7 @@ $config=array(
 #     'employeeType' => TRUE,        # optional
 #     'roomNumber' => TRUE,          # optional
 #     'uid' => 'uid;org',            # optional
+#     'labeldUri' => 'official',     # optional
     ),
     'eduPerson' => array(
 #     'eduPersonAffiliation' => TRUE,               # optional
@@ -85,10 +90,22 @@ $config=array(
       'homeDirectory' => TRUE, # required
 #     'loginShell' => TRUE,    # optional
 #     'gecos' => TRUE,         # optional
+#     'userPassword' => TRUE,  # optional
     ),
     'ldapPublicKey' => array(
       'sshPublicKey' => TRUE,  # required
       'uid' => 'uid;org'       # required
+    ),
+    'voPerson' => array(
+#     'voPersonApplicationUID' => TRUE,      # optional
+#     'voPersonAuthorName' => TRUE,          # optional
+#     'voPersonCertificateDN' => TRUE,       # optional
+#     'voPersonCertificateIssuerDN' => TRUE, # optional
+#     'voPersonExternalID' => 'uid;org',     # optional
+#     'voPersonID' => 'enterprise',          # optional
+#     'voPersonPolicyAgreement' => TRUE,     # optional
+#     'voPersonSoRID' => 'sorid',            # optional
+#     'voPersonStatus' => TRUE,              # optional
     )
   )
 );
