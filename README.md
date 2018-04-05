@@ -25,8 +25,8 @@ The LdapFixedProvisioner allows configuration of an LDAP server connection and L
 
 The configuration resides inside a ```config``` variable and specifies basic server information, behaviour information and objectclass and attribute information:
 * basedn: base DN for people and groups, usually in the form ```dc=example,dc.com```
-* dn_attribute_name: the attribute to use for generating the DN, usually one of ```eppn``` or ```uid```
-* dn_identifier_type: the Identifier attribute to retrieve when generating the DN, usually also one of ```eppn``` or ```uid```
+* dn_attribute_name: the attribute to use for generating the DN, usually one of ```eppn```, ```cn``` or ```uid```
+* dn_identifier_type: the Identifier attribute to retrieve when generating the DN, usually also one of ```eppn```, ```sorid``` or ```uid```
 * scope_suffix: a suffix to apply on scoped attributes like eduPersonScopedAffiliation and eduPersonUniqueId.  
   This parameter allows template replacement for the tag ```{CO}```, which is replaced with the name of the CO  
   of the current group or person.
@@ -46,22 +46,29 @@ For each enabled objectclass, a configuration hash/dictionary/keyed array can be
 * ```groupOfNames``` (optional)
 * ```eduMember``` (optional)
 * ```posixAccount``` (optional)
+* ```posixGroup``` (optional)
 * ```ldapPublicKey``` (optional)
 * ```voPerson``` (optional)
 
-The attributes required for the classes (```sn```, ```cn```, ```member```, ```uidNumber```, ```gidNumber```, ```sshPublicKey```, ```uid```) are generated automatically whenever the associated objectclass is enabled. This follows the same behaviour as the well know LdapProvisioner plugin.
+The attributes required for the classes (```sn```, ```cn```, ```member```, ```uidNumber```, ```gidNumber```, ```sshPublicKey```, ```uid```, etc.) are generated automatically whenever the associated objectclass is enabled. This follows the same behaviour as the well known LdapProvisioner plugin.
 
 For each attribute, the configuration can specify a relevant type of item and the object origin. For a lot of types this is 
 irrelevant, but especially for the name, address and identifier types this allows control over the exact name, address or
 identifier type used to generate the attribute, as well as the origin (```COPerson``` or ```OrgIdentity```).
 
 The type is determined by using the string representation of the relevant COmanage enum (see ```app/Lib/enums.php``` in the 
-COmanage source code). Examples are ```uid```, ```eppn```, ```orcid``` for identifiers, ```official```, ```campus```
-and ```home``` for contact addresses and ```official``` or ```preferred``` for names, email and telephone.
+COmanage source code). Examples are '```uid```', '```eppn```', '```orcid```' for identifiers, '```official```', '```campus```'
+and '```home```' for contact addresses and '```official```' or '```preferred```' for names, email and telephone. The type name is
+converted to lowercase to make sure it matches user specified extended types. 
+
+For the group membership attributes ```member```, ```memberUID``` and ```hasMember```, the configured DNs of the relevant
+COPerson records are used. It is not possible to indicate a different DN generation scheme for members of a group. This
+also means that records that are member of a group, but that are not provisioned for some reason (missing attribute for
+DN generation usually), are absent from the membership attributes.
 
 If the relevant information should be taken from data associated with the ```OrgIdentity``` of this person instead of the
-data associated with the ```COPerson``` object, a second entry can be specified, semi colon separated, containing the 
-text ```org```. For relevant identifiers and address or name components this will force the algorithm to use the
+data associated with the ```COPerson``` object, a second entry can be specified, semicolon separated, containing the 
+text '```org```'. For relevant identifiers and address or name components this will force the algorithm to use the
 ```OrgIdentity``` as source. Examples are shown below.
   
 Whenever the specification does not differ from the default setting, a value of ```TRUE``` can be used to keep the
@@ -76,15 +83,40 @@ Use COPerson as base object:
 ```<attribute> => '<type>;person'```
 
 
+Please note that the configuration array key should match the relevant switch case in the provisioner code. I.e., this
+name cannot be changed, the line can only be enabled. The following example is an exhaustive list of all possible 
+attribute generation cases. The things that are configurable are:
+* whether the attribute is generated or not (required attributes are always generated)
+* the identifier or address type searched for when generating the attribute
+* whether identifiers or address information is taken from the COPerson (which is usually user managed) or OrgIdentity 
+  (which is normally IdP provided).
+  
+
+posixGroup
+==========
+```posixGroup``` requires a ```gidNumber``` identifier, but groups in COmanage cannot have attributes. At the moment,
+a ```gidNumber``` is fabricated by adding the internal COmanage ```COGroup.id``` value to a base value. The default 
+value of this base value is ```10000```, but you can specify a different base number as the 'type' of ```gidNumber```:
+```
+    'gidNumber' => '15000'
+```
+This is a questionable use of the 'type' field though, so this configuration may change in the future.
+
+Both ```posixGroup``` and ```groupOfNames``` are supported as objectclass for group type structures. However, both of
+these LDAP structures are of type ```STRUCTURAL```, which means they cannot be both used for exporting groups.
+
+
+
 Example
 =======
 ```<?php
 $config=array(
   'fixedldap' => array(
-    'basedn'  => 'ou=People,dc=example,dc=com',
-    'groupdn' => 'ou=Groups,dc=example,dc=com',
+    'basedn'  => 'ou=dc=example,dc=com',
+    # configuring like this will lead to DNs like
+    # uid=<sorid ID>,ou=People,ou=<CO name>,dc=example,dc=com
     'dn_attribute_name' => 'uid',
-    'dn_identifier_type' => 'uid',
+    'dn_identifier_type' => 'sorid',
 
     # set an optional scope suffix
     #'scope_suffix' => '',
@@ -113,6 +145,7 @@ $config=array(
 #     'groupOfNames',           # optional
 #     'eduMember',              # optional
 #     'posixAccount',           # optional
+#     'posixGroup',             # optional
 #     'ldapPublicKey',          # optional
 #     'voPerson',               # optional
     ),
@@ -162,15 +195,24 @@ $config=array(
     ),
     'eduMember' => array(
 #      'isMemberOf' => TRUE,   # optional
-#      'hasMember' => 'uid',   # optional, default 'uid' identifiers
+#      'hasMember' => TRUE,    # optional
     ),
     'posixAccount' => array(
+      'cn' => TRUE,            # required
+      'uid' => 'uid;org',      # required
       'uidNumber' => TRUE,     # required
       'gidNumber' => TRUE,     # required
       'homeDirectory' => TRUE, # required
 #     'loginShell' => TRUE,    # optional
 #     'gecos' => TRUE,         # optional
 #     'userPassword' => TRUE,  # optional
+    ),
+    'posixGroup' => array(
+      'cn' => TRUE,            # required
+      'gidNumber' => TRUE,     # required
+#     'userPassword' => TRUE,  # optional
+#     'memberUID' => TRUE,     # optional
+#     'description' => TRUE,   # optional
     ),
     'ldapPublicKey' => array(
       'sshPublicKey' => TRUE,  # required

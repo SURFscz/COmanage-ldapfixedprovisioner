@@ -126,6 +126,30 @@ class CoLdapFixedProvisionerDn extends AppModel {
     return $dn;
   }
 
+  
+
+  /**
+   * Get a specific identifier type from a list
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array List of identifiers
+   * @param  string identifier type
+   * @return String identifier value
+   */
+  private function getIdentifierType($identifiers, $type) 
+  {
+    CakeLog::write('debug',"looking in identifier list ".json_encode($identifiers));
+    foreach($identifiers as $identifier) {
+      if(!empty($identifier['type'])
+         && $identifier['type'] == $type
+         && !empty($identifier['identifier'])
+         && $identifier['status'] == StatusEnum::Active) {
+        return $identifier['identifier'];
+      }
+    }
+    return null;
+  }
+
   /**
    * Assign a DN for a CO Person.
    *
@@ -139,7 +163,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
   public function assignPersonDn($coProvisioningTargetData, $coPersonData) {
     // Start by checking the DN configuration
     $dn_attribute_name = Configure::read('fixedldap.dn_attribute_name');
-
+    $dn_identifier_type = Configure::read('fixedldap.dn_identifier_type');
+CakeLog::write('debug',"searching for $dn_attribute_name of type $dn_identifier_type");
     $basedn = $this->obtainDn($coProvisioningTargetData, $coPersonData, "co",true);
     if(empty($dn_attribute_name) || empty($basedn)) {
       // Throw an exception... these should be defined
@@ -149,26 +174,34 @@ class CoLdapFixedProvisionerDn extends AppModel {
     // Walk through available identifiers looking for a match
 
     $dn = "";
-    foreach($coPersonData['Identifier'] as $identifier) {
-      if(!empty($identifier['type'])
-         && $identifier['type'] == $dn_attribute_name
-         && !empty($identifier['identifier'])
-         && $identifier['status'] == StatusEnum::Active) {
-        // Match. We'll use the first active row found... it's undefined how to behave
-        // if multiple active identifiers of a given type are found. (We don't actually
-        // need to check for Status=Active since ProvisionerBehavior will filter out
-        // non-Active status.)
-        $dn = $dn_attribute_name . "=" . $identifier['identifier']. ",ou=People," . $basedn['newdn'];
-
-        break;
+    $uid = $this->getIdentifierType($coPersonData['Identifier'],$dn_identifier_type);
+    if(empty($uid))
+    {
+      if(!empty($coPersonData['CoOrgIdentityLink'])) {
+        foreach($coPersonData['CoOrgIdentityLink'] as $lnk)
+        {
+          if(!empty($lnk['OrgIdentity']) && !empty($lnk['OrgIdentity']['Identifier']))
+          {
+            $uid = $this->getIdentifierType($lnk['OrgIdentity']['Identifier'],$dn_identifier_type);
+            if(!empty($uid)) break;
+          }
+        }
       }
+    }
+    if(!empty($uid))
+    {
+      // Match. We'll use the first active row found... it's undefined how to behave
+      // if multiple active identifiers of a given type are found. (We don't actually
+      // need to check for Status=Active since ProvisionerBehavior will filter out
+      // non-Active status.)
+      $dn = $dn_attribute_name . "=" . $uid. ",ou=People," . $basedn['newdn'];
     }
 
     if($dn == "") {
       // We can't proceed without a DN
-      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', array($dn_attribute_name)));
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', array($dn_identifier_type)));
     }
-
+CakeLog::write("debug","dn found: $dn");
     return $dn;
   }
 
@@ -211,8 +244,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
    * @return Array Array of DNs found -- note this array is not in any particular order, and may have fewer entries
    */
 
-  public function dnsForMembers($coGroupMembers) {
-    return $this->mapCoGroupMembersToDns($coGroupMembers);
+  public function dnsForMembers($coGroupMembers, $fulldn=TRUE) {
+    return $this->mapCoGroupMembersToDns($coGroupMembers, FALSE, $fulldn);
   }
 
   /**
@@ -233,10 +266,11 @@ class CoLdapFixedProvisionerDn extends AppModel {
    * @since  COmanage Registry vTODO
    * @param  Array CO Group Members
    * @param  Boolean True to map owners, false to map members
+   * @param  Boolean True to map full DNs, False to only use the identifier
    * @return Array Array of DNs found -- note this array is not in any particular order, and may have fewer entries
    */
 
-  private function mapCoGroupMembersToDns($coGroupMembers, $owners=false) {
+  private function mapCoGroupMembersToDns($coGroupMembers, $owners=false, $fulldn=TRUE) {
     // Walk through the members and pull the CO Person IDs
 
     $coPeopleIds = array();
@@ -256,7 +290,20 @@ class CoLdapFixedProvisionerDn extends AppModel {
       $args['conditions']['CoLdapFixedProvisionerDn.co_person_id'] = $coPeopleIds;
       $args['fields'] = array('CoLdapFixedProvisionerDn.co_person_id', 'CoLdapFixedProvisionerDn.dn');
 
-      return array_values($this->find('list', $args));
+      $retval = array_values($this->find('list', $args));
+      if(!$fulldn) {
+        CakeLog::write('debug','converting DNs to single attributes '.json_encode($retval));
+        $basedn = Configure::read('fixedldap.basedn');
+        array_walk($retval, function(&$item, $key, $basedn) {
+          $attrs = explode(",", rtrim(str_replace($basedn, "", $item), " ,"));
+          if(sizeof($attrs)>0) {
+            CakeLog::write('debug','returning '.$attrs[0].' from '.json_encode($attrs));
+            $item=$attrs[0];
+          }
+        }, $basedn);
+      }
+      CakeLog::write('debug','DNs for group are '.json_encode($retval));
+      return $retval;
     } else {
       return array();
     }

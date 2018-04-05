@@ -2,7 +2,9 @@
 $config=array(
   'fixedldap' => array(
     'basedn'  => 'dc=example,dc=com',
-    'dn_attribute_name' => 'uid',
+    # configuring like this will lead to DNs like
+    # uid=<sorid ID>,ou=<CO name>,ou=Peopl,dc=example,dc=com    'dn_attribute_name' => 'uid',
+    'dn_identifier_type' => 'sorid',
 
     # set an optional scope suffix (default: empty)
     #'scope_suffix' => '{CO}',
@@ -85,12 +87,22 @@ $config=array(
 #      'hasMember' => 'uid',   # optional
     ),
     'posixAccount' => array(
+      'cn' => TRUE,            # required
+      'uid' => 'uid;org',      # required
       'uidNumber' => TRUE,     # required
       'gidNumber' => TRUE,     # required
       'homeDirectory' => TRUE, # required
 #     'loginShell' => TRUE,    # optional
 #     'gecos' => TRUE,         # optional
 #     'userPassword' => TRUE,  # optional
+#     'description' => TRUE,   # optional
+    ),
+    'posixGroup' => array(
+      'cn' => TRUE,            # required
+      'gidNumber' => TRUE,     # required
+#     'userPassword' => TRUE,  # optional
+#     'memberUID' => TRUE,     # optional
+#     'description' => TRUE,   # optional
     ),
     'ldapPublicKey' => array(
       'sshPublicKey' => TRUE,  # required

@@ -61,6 +61,28 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   protected $plugins = array();
 
   /**
+   * Create a gidNumber for a CoGroup
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array                  $provisioningTargetData   Provisioning plugin target data
+   * @param  Array                  $group                    COGroup data
+   * @return integer                                          unique gid number
+   */
+  protected function createGidNumber($provisioningTargetData, $group, $type)
+  {
+    $retval=null;
+    $this->dev_log("creating gidNumber using ".json_encode($group));
+    if(!empty($group) && !empty($group['id'])) {
+      $id = intval($group['id']);
+      $base=10000;
+      if(is_numeric($type)) $base = intval($type);
+      $retval = $base + $id;
+    }
+    $this->dev_log("returning gidNumber ".json_encode($retval));
+    return $retval;
+  }
+
+  /**
    * Assemble attributes for an LDAP record.
    *
    * @since  COmanage Registry v0.8
@@ -130,12 +152,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
 
       // Skip objectclasses that aren't relevant for the sort of data we're working with
-      if (($person && $oc == 'groupOfNames')
-         || (!$person && !in_array($oc, array('groupOfNames','eduMember')))) {
+      if (($person && in_array($oc, array('groupOfNames', 'posixGroup')))
+         || (!$person && !in_array($oc, array('groupOfNames','eduMember','posixGroup')))) {
         continue;
       }
 
-      if ($group && empty($groupMembers) && in_array($oc, array('groupOfNames','eduMember'))) {
+      if ($group && empty($groupMembers) && in_array($oc, array('groupOfNames','eduMember','posixGroup'))) {
         // As an interim solution to CO-1348 we'll pull all group members here (since we no longer get them)
         $args = array();
         $args['conditions']['CoGroupMember.co_group_id'] = $provisioningData['CoGroup']['id'];
@@ -507,18 +529,20 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 // Start with an empty list in case no active passwords
                 $attributes[$attr] = array();
               }
-              foreach($provisioningData['Password'] as $up) {
-                // Skip locked passwords
-                if(!isset($up['AuthenticatorStatus']['locked']) || !$up['AuthenticatorStatus']['locked']) {
-                  // There's probably a better place for this (an enum somewhere?)
-                  switch($up['password_type']) {
-                    // XXX we can't use PasswordAuthenticator's enums in case the plugin isn't installed
-                    case 'CR':
-                      $attributes[$attr][] = '{CRYPT}' . $up['password'];
-                      break;
-                    default:
-                      // Silently ignore other types
-                      break;
+              if(!empty($provisioningData['Password'])) {
+                foreach($provisioningData['Password'] as $up) {
+                  // Skip locked passwords
+                  if(!isset($up['AuthenticatorStatus']['locked']) || !$up['AuthenticatorStatus']['locked']) {
+                    // There's probably a better place for this (an enum somewhere?)
+                    switch($up['password_type']) {
+                      // XXX we can't use PasswordAuthenticator's enums in case the plugin isn't installed
+                      case 'CR':
+                        $attributes[$attr][] = '{CRYPT}' . $up['password'];
+                        break;
+                      default:
+                        // Silently ignore other types
+                        break;
+                    }
                   }
                 }
               }
@@ -631,8 +655,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
             // Group attributes (cn is covered above)
             case 'description':
+              if($person) {
+                # description is used in posixAccount as cn
+                $attributes[$attr] = generateCn($provisioningData['PrimaryName']);
+              }
               // A blank description is invalid, so don't populate if empty
-              if (!empty($provisioningData['CoGroup']['description'])) {
+              else if (!empty($provisioningData['CoGroup']['description'])) {
                 $attributes[$attr] = $provisioningData['CoGroup']['description'];
               }
               break;
@@ -662,7 +690,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                       $this->dev_log('dn returns '.json_encode($dn));
                       if(!empty($dn['newdn']))
                       {
-                        $attributes['isMemberOf'][] = $dn['newdn'];
+                        $attributes[$attr][] = $dn['newdn'];
                       }
                     }
                   }
@@ -674,6 +702,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               }
               break;
             case 'member':
+              # groupOfNames
               $attributes[$attr] = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers);
               if (empty($attributes[$attr])) {
                 $this->dev_log('group has no members');
@@ -681,6 +710,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 // XXX seems like a better option would be to deprovision the group?
                 throw new UnderflowException('member');
               }
+              break;
+            case 'memberUID':
+              # posixGroup, which allows empty groups
+              $attributes[$attr] = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers, FALSE);
               break;
             case 'owner':
               $owners = $this->CoLdapFixedProvisionerDn->dnsForOwners($groupMembers);
@@ -694,8 +727,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 $attributes[$attr] = array();
               }
               break;
-            // eduPersonEntitlement is based on Group memberships
             case 'eduPersonEntitlement':
+              // eduPersonEntitlement is based on Group memberships
               if (!empty($provisioningData['CoGroupMember'])) {
                 $entGroupIds = Hash::extract($provisioningData['CoGroupMember'], '{n}.co_group_id');
                 $attributes[$attr] = $this->CoProvisioningTarget
@@ -716,17 +749,26 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               // Construct using same name as cn
               $attributes[$attr] = generateCn($provisioningData['PrimaryName']) . ",,,";
               break;
-            case 'gidNumber':
             case 'homeDirectory':
             case 'uidNumber':
-              // We pull these attributes from Identifiers with types of the same name
-              // as an experimental implementation for CO-863.
-              foreach ($provisioningData['Identifier'] as $m) {
-                if (isset($m['type'])
-                   && $m['type'] == $attr
-                   && $m['status'] == StatusEnum::Active) {
-                  $attributes[$attr] = $m['identifier'];
-                  break;
+            case 'gidNumber':
+              if ($person) {
+                // We pull these attributes from Identifiers with types of the same name
+                // as an experimental implementation for CO-863.
+                foreach ($provisioningData['Identifier'] as $m) {
+                  if (isset($m['type'])
+                     && strtolower($m['type']) == strtolower($attr)
+                     && $m['status'] == StatusEnum::Active) {
+                    $attributes[$attr] = $m['identifier'];
+                    break;
+                  }
+                }
+              } else if($attr == "gidNumber"){
+                // generate a group ID number based on the group data
+                $this->dev_log("creating gid number");
+                $nr = $this->createGidNumber($coProvisioningTargetData, $provisioningData['CoGroup'], $targetType);
+                if(!empty($nr)) {
+                  $attributes[$attr] = $nr;
                 }
               }
               break;
@@ -1037,8 +1079,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // then don't try to do anything.
       if (empty($groupdn)
           || !is_array($schemata)
-          || !in_array('groupOfNames',$schemata)) {
-            $this->dev_log("returning early because '$groupdn' not set or groupOfNames not in schema list: ".json_encode($schemata));
+          || empty(array_intersect(array('groupOfNames','posixGroup'),$schemata))) {
+            $this->dev_log("returning early because '$groupdn' not set or groupOfNames and posixGroup not in schema list: ".json_encode($schemata));
         return true;
       }
     }
@@ -1614,6 +1656,21 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           'required'    => false
         ),
         'attributes' => array(
+          'uid' => array(
+            'required'   => true,
+            'multiple'   => false,
+            'alloworgvalue' => true,
+            'extendedtype' => 'identifier_types',
+            'defaulttype' => IdentifierEnum::UID
+          ),
+          'cn' => array(
+            'required'   => true,
+            'multiple'   => false
+          ),
+          'description' => array(
+            'required'    => false,
+            'multiple'    => false
+          ),
           'uidNumber' => array(
             'required'   => true,
             'multiple'   => false
@@ -1637,6 +1694,33 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           'gecos' => array(
             'required'   => false,
             'multiple'   => false
+          )
+        )
+      ),
+      'posixGroup' => array(
+        'objectclass' => array(
+          'required'    => false
+        ),
+        'attributes' => array(
+          'cn' => array(
+            'required'   => true,
+            'multiple'   => false
+          ),
+          'gidNumber' => array(
+            'required'   => true,
+            'multiple'   => false
+          ),
+          'userPassword' => array(
+            'required'    => false,
+            'multiple'    => true
+          ),
+          'memberUID' => array(
+            'required'   => false,
+            'multiple'   => true
+          ),
+          'description' => array(
+            'required'    => false,
+            'multiple'    => false
           )
         )
       ),
@@ -1889,6 +1973,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   // convenience function to enable/disable the development/trace logs
   private function dev_log($msg)
   {
-    //CakeLog::write('debug',$msg);
+    CakeLog::write('debug',$msg);
   }
 }
