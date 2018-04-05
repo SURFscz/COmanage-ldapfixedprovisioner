@@ -1973,6 +1973,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   // convenience function to enable/disable the development/trace logs
   private function dev_log($msg)
   {
-    CakeLog::write('debug',$msg);
+    //CakeLog::write('debug',$msg);
   }
 }
