@@ -138,7 +138,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
    */
   private function getIdentifierType($identifiers, $type) 
   {
-    CakeLog::write('debug',"looking in identifier list ".json_encode($identifiers));
     foreach($identifiers as $identifier) {
       if(!empty($identifier['type'])
          && $identifier['type'] == $type
@@ -164,7 +163,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
     // Start by checking the DN configuration
     $dn_attribute_name = Configure::read('fixedldap.dn_attribute_name');
     $dn_identifier_type = Configure::read('fixedldap.dn_identifier_type');
-CakeLog::write('debug',"searching for $dn_attribute_name of type $dn_identifier_type");
     $basedn = $this->obtainDn($coProvisioningTargetData, $coPersonData, "co",true);
     if(empty($dn_attribute_name) || empty($basedn)) {
       // Throw an exception... these should be defined
@@ -201,7 +199,6 @@ CakeLog::write('debug',"searching for $dn_attribute_name of type $dn_identifier_
       // We can't proceed without a DN
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', array($dn_identifier_type)));
     }
-CakeLog::write("debug","dn found: $dn");
     return $dn;
   }
 
@@ -292,17 +289,22 @@ CakeLog::write("debug","dn found: $dn");
 
       $retval = array_values($this->find('list', $args));
       if(!$fulldn) {
-        CakeLog::write('debug','converting DNs to single attributes '.json_encode($retval));
+        // instead of retrieving the relevant identifier for each member of the group,
+        // we decode the DN of that member back following our own system, so we end up with
+        // the relevant identifier attribute
         $basedn = Configure::read('fixedldap.basedn');
         array_walk($retval, function(&$item, $key, $basedn) {
           $attrs = explode(",", rtrim(str_replace($basedn, "", $item), " ,"));
           if(sizeof($attrs)>0) {
-            CakeLog::write('debug','returning '.$attrs[0].' from '.json_encode($attrs));
             $item=$attrs[0];
+            // remove the 'uid=<uid>' attribute type name
+            $attrs = explode("=",$item,2);
+            if(sizeof($attrs) > 1) {
+              $item = $attrs[1];
+            }
           }
         }, $basedn);
       }
-      CakeLog::write('debug','DNs for group are '.json_encode($retval));
       return $retval;
     } else {
       return array();
