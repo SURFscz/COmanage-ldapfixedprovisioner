@@ -1935,7 +1935,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
   {
-    $dn = "ou=$coData,$basedn";
+    $dn = "o=$coData,$basedn";
     $peopledn = "ou=People,$dn";
     $groupdn="ou=Groups,$dn";
     $retval=array("","");
@@ -1944,7 +1944,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       return $retval;
     }
 
-    if (!$this->ldap_add($dn, array("ou"=>$coData,"objectClass"=>"organizationalUnit"))) {
+    if (!$this->ldap_add($dn, array("o"=>$coData,"objectClass"=>"organization"))) {
       if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
         $this->log(_txt('er.ldapfixedprovisioner.add1').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
         return $retval;
