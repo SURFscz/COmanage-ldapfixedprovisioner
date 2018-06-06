@@ -50,6 +50,9 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
   "plugin.ldapFixedProvisioner.cotermsandconditions",
   "plugin.ldapFixedProvisioner.cotheme",
   "plugin.ldapFixedProvisioner.orgidentitysource",
+  "plugin.ldapFixedProvisioner.authenticator",
+  "plugin.ldapFixedProvisioner.codepartment",
+  "plugin.ldapFixedProvisioner.coemaillist",
   );
 
   public $CEPT;
@@ -68,6 +71,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
       'fixedldap' => array(
         'basedn'  => 'dc=example,dc=com',
         'dn_attribute_name' => 'eppn',
+        'dn_identifier_type' => 'eppn',
         'scope_suffix' => 'example-scope',
         'server' => array(
           'url' => 'ldap:///',
@@ -80,7 +84,12 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
           'organizationalPerson',
           'inetOrgPerson',
           'groupOfNames',
-          'eduMember'
+          'eduPerson',
+          'eduMember',          
+          'ldapPublicKey',
+          'posixAccount',
+//        'posixGroup', // do not generate posixGroup; not compatible with groupOfnames          
+          'voPerson',
         ),
         'person' => array(
           'sn' => 'official',
@@ -115,8 +124,51 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
         ),
         'eduMember' => array(
           'isMemberOf' => TRUE,
-          'hasMember' => 'uid',
+          'hasMember' => TRUE,
         ),
+        'posixAccount' => array(
+          'cn' => TRUE,
+          'uid' => 'uid;org',
+          'uidNumber' => TRUE,
+          'gidNumber' => TRUE,
+          'homeDirectory' => TRUE,
+          'loginShell' => TRUE,
+          'gecos' => TRUE,
+          'userPassword' => TRUE,
+          'description' => TRUE,
+        ),
+        'posixGroup' => array(
+          'cn' => TRUE,
+          'gidNumber' => TRUE,
+          'userPassword' => TRUE,
+          'memberUID' => TRUE,
+          'description' => TRUE,
+        ),
+        'ldapPublicKey' => array(
+          'sshPublicKey' => TRUE,
+          'uid' => 'uid;org'
+        ),
+        'eduPerson' => array(
+          'eduPersonAffiliation' => TRUE,
+          'eduPersonEntitlement' => TRUE,
+          'eduPersonNickname' => 'official',
+          'eduPersonOrcid' => ';org',
+          'eduPersonPrincipalName' => 'eppn;org',
+          'eduPersonPrincipalNamePrior' => 'eppn;org',
+          'eduPersonScopedAffiliation' => TRUE,
+          'eduPersonUniqueId' => 'enterprise',
+         ),
+        'voPerson' => array(
+          'voPersonApplicationUID' => TRUE,
+          'voPersonAuthorName' => TRUE,
+          'voPersonCertificateDN' => TRUE,
+          'voPersonCertificateIssuerDN' => TRUE,
+          'voPersonExternalID' => 'uid;org',
+          'voPersonID' => 'enterprise',
+          'voPersonPolicyAgreement' => TRUE,
+          'voPersonSoRID' => 'sorid',
+          'voPersonStatus' => TRUE,
+        )
       )
     ));
   }
@@ -160,15 +212,15 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
         '["ldap_connect",["ldap:\/\/\/"]],'.
         '["ldap_set_option",[17,3]],'.
         '["ldap_bind",["cn=bind,dc=example,dc=com","password"]],'.
-        '["ldap_add",["ou=CO 1,dc=example,dc=com",{"ou":"CO 1","objectClass":"organizationalUnit"}]],'.
-        '["ldap_add",["ou=People,ou=CO 1,dc=example,dc=com",{"ou":"People","objectClass":"organizationalUnit"}]],'.
-        '["ldap_add",["ou=Groups,ou=CO 1,dc=example,dc=com",{"ou":"Groups","objectClass":"organizationalUnit"}]],'.
+        '["ldap_add",["o=CO 1,dc=example,dc=com",{"o":"CO 1","objectClass":"organization"}]],'.
+        '["ldap_add",["ou=People,o=CO 1,dc=example,dc=com",{"ou":"People","objectClass":"organizationalUnit"}]],'.
+        '["ldap_add",["ou=Groups,o=CO 1,dc=example,dc=com",{"ou":"Groups","objectClass":["organizationalUnit"]}]],'.
         '["ldap_is_connected",[]],'.
-        '["ldap_search",["ou=People,ou=CO 1,dc=example,dc=com","(objectclass=*)",["dn"]]],'.
+        '["ldap_search",["ou=People,o=CO 1,dc=example,dc=com","(objectclass=*)",["dn"]]],'.
         '["ldap_get_entries",[[1,2]]],'.
         '["ldap_unbind",[]],'.
         '["ldap_is_connected",[]],'.
-        '["ldap_search",["ou=Groups,ou=CO 1,dc=example,dc=com","(objectclass=*)",["dn"]]],'.
+        '["ldap_search",["ou=Groups,o=CO 1,dc=example,dc=com","(objectclass=*)",["dn"]]],'.
         '["ldap_get_entries",[[1,2]]],'.
         '["ldap_unbind",[]]'.
         ']';
@@ -289,15 +341,15 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
       ProvisioningActionEnum::CoGroupDeleted => "97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoGroupReprovisionRequested => "97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoGroupUpdated =>"97d170e1550eee4afc0af065b78cda302a97674c",
-      ProvisioningActionEnum::CoPersonAdded =>"5fee094e3883f3e758eb29ef22aa73b65f7ffb20", // add
-      ProvisioningActionEnum::CoPersonDeleted =>"e1fafe45762337e349a7454504a231ab743e0db6", // delete
-      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"27daefd1a50294845add582b1b4fc2f440b7754e", // replace
-      ProvisioningActionEnum::CoPersonExpired =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonReprovisionRequested =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonUnexpired =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonUpdated =>"27daefd1a50294845add582b1b4fc2f440b7754e"
+      ProvisioningActionEnum::CoPersonAdded =>"b5b4aa08ed4dd4d640b115c28a75c3be3036f478", // delete
+      ProvisioningActionEnum::CoPersonDeleted =>"98b3d6a1d363f5b272388c489f9e850424f9922a", // delete
+      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642", // replace
+      ProvisioningActionEnum::CoPersonExpired =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
+      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
+      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
+      ProvisioningActionEnum::CoPersonReprovisionRequested =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
+      ProvisioningActionEnum::CoPersonUnexpired =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
+      ProvisioningActionEnum::CoPersonUpdated =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642"
     );
     // these arguments come from the ProvisionerBehavior::marshallCoPersonData
     $args=array();
@@ -345,14 +397,14 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
       ProvisioningActionEnum::CoGroupReprovisionRequested => "97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoGroupUpdated =>"97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoPersonAdded =>"97d170e1550eee4afc0af065b78cda302a97674c",
-      ProvisioningActionEnum::CoPersonDeleted =>"26d0472fc5eb21445a9c239ff18379b52b24b86f", // main groups added
-      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"26d0472fc5eb21445a9c239ff18379b52b24b86f",
-      ProvisioningActionEnum::CoPersonExpired =>"26d0472fc5eb21445a9c239ff18379b52b24b86f",
+      ProvisioningActionEnum::CoPersonDeleted =>"fe820e36f65bafd82c4624ee6bfa9b1191ca8ac0", // main groups added
+      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"fe820e36f65bafd82c4624ee6bfa9b1191ca8ac0",
+      ProvisioningActionEnum::CoPersonExpired =>"fe820e36f65bafd82c4624ee6bfa9b1191ca8ac0",
       ProvisioningActionEnum::CoPersonPetitionProvisioned =>"97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoPersonPipelineProvisioned =>"97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoPersonReprovisionRequested =>"97d170e1550eee4afc0af065b78cda302a97674c",
-      ProvisioningActionEnum::CoPersonUnexpired =>"97d170e1550eee4afc0af065b78cda302a97674c",
-      ProvisioningActionEnum::CoPersonUpdated =>"26d0472fc5eb21445a9c239ff18379b52b24b86f"
+      ProvisioningActionEnum::CoPersonUnexpired =>"fe820e36f65bafd82c4624ee6bfa9b1191ca8ac0",
+      ProvisioningActionEnum::CoPersonUpdated =>"fe820e36f65bafd82c4624ee6bfa9b1191ca8ac0"
     );
     $args['conditions']=array("CoPerson.id"=>5);
     $person5 = $this->CP->find('first',$args);
@@ -366,19 +418,19 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     }}
 
     $expectedGroup3hashes=array(
-      ProvisioningActionEnum::CoGroupAdded => "e8829903b5289f71d48790accac15cd8d82f3c19", // delete, add
-      ProvisioningActionEnum::CoGroupDeleted => "b0352d6080c91203eae077b296d5e53ede0c39db", // delete
-      ProvisioningActionEnum::CoGroupReprovisionRequested => "b8390093fd0b05c4883e26cb25a26eaa46504b6d", // del+add
-      ProvisioningActionEnum::CoGroupUpdated =>"5b702d41b390568b1e9797471a09d8fe6b88a770", // replace
-      ProvisioningActionEnum::CoPersonAdded =>"5fee094e3883f3e758eb29ef22aa73b65f7ffb20", // add
-      ProvisioningActionEnum::CoPersonDeleted =>"e1fafe45762337e349a7454504a231ab743e0db6", // delete
-      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"27daefd1a50294845add582b1b4fc2f440b7754e", // replace
-      ProvisioningActionEnum::CoPersonExpired =>"27daefd1a50294845add582b1b4fc2f440b7754e", //
-      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonReprovisionRequested =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonUnexpired =>"27daefd1a50294845add582b1b4fc2f440b7754e",
-      ProvisioningActionEnum::CoPersonUpdated =>"27daefd1a50294845add582b1b4fc2f440b7754e"
+      ProvisioningActionEnum::CoGroupAdded => "4d4b6c080ec3e9466f7b8e4ce608f60b0fab8ceb", // delete, add
+      ProvisioningActionEnum::CoGroupDeleted => "59b8e492899697b82d39caf78fc9287a4cd25eea", // delete
+      ProvisioningActionEnum::CoGroupReprovisionRequested => "a19668fda16e01b66936386ed8c774e59d1e9629", // del+add
+      ProvisioningActionEnum::CoGroupUpdated =>"95b169df5d662914acb913337a8659587df9e4ae", // replace
+      ProvisioningActionEnum::CoPersonAdded =>"762df188f4f1f0444797b95b6347f106a76c91c1", // delete
+      ProvisioningActionEnum::CoPersonDeleted =>"98b3d6a1d363f5b272388c489f9e850424f9922a", // delete
+      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f", // replace
+      ProvisioningActionEnum::CoPersonExpired =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f", //
+      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
+      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
+      ProvisioningActionEnum::CoPersonReprovisionRequested =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
+      ProvisioningActionEnum::CoPersonUnexpired =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
+      ProvisioningActionEnum::CoPersonUpdated =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f"
     );
     $group3base = $this->CG->find('first',array('conditions'=>array("CoGroup.id"=>103),'contain'=>array('CoGroupMember')));
     //print "Group data is ".json_encode($group3)."<br/>";

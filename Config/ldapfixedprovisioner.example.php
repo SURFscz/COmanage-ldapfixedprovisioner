@@ -9,9 +9,6 @@ $config=array(
     # set an optional scope suffix (default: empty)
     #'scope_suffix' => '{CO}',
 
-    # remove unused attributes (default: FALSE)
-    #'remove_unused' => FALSE,
-
     # use attribute options (default: FALSE)
     #'attr_opts' => FALSE,
 
@@ -33,10 +30,12 @@ $config=array(
       'organizationalPerson',   # required
       'inetOrgPerson',          # required
 #     'eduPerson',              # optional
-#     'groupOfNames',           # optional
+#     'groupOfNames',           # optional, not with posixGroup
 #     'eduMember',              # optional
 #     'posixAccount',           # optional
+#     'posixGroup',             # optional, not with groupOfNames
 #     'ldapPublicKey',          # optional
+#     'voPerson',               # optional
     ),
     'person' => array(
       'sn' => 'official',              # required
@@ -84,7 +83,7 @@ $config=array(
     ),
     'eduMember' => array(
 #      'isMemberOf' => TRUE,   # optional
-#      'hasMember' => 'uid',   # optional
+#      'hasMember' => TRUE,    # optional
     ),
     'posixAccount' => array(
       'cn' => TRUE,            # required

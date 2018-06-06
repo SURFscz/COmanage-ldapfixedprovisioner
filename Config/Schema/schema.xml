@@ -58,6 +58,9 @@
     <field name="co_id" type="I">
       <constraint>REFERENCES cm_co(id)</constraint>
     </field>
+    <field name="cou_id" type="I">
+      <constraint>REFERENCES cm_cou(id)</constraint>
+    </field>
     <field name="dn" type="C" size="4096" />
     <field name="created" type="T" />
     <field name="modified" type="T" />

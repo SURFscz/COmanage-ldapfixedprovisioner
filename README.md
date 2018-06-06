@@ -106,6 +106,26 @@ Both ```posixGroup``` and ```groupOfNames``` are supported as objectclass for gr
 these LDAP structures are of type ```STRUCTURAL```, which means they cannot be both used for exporting groups.
 
 
+DN Attribute Name
+=================
+The configuration allows selecting a different name for the DN attribute than used to select the type (see ```dn_attribute_name```
+and ```dn_identifier_type```). The LFP will automatically add an attribute named after ```dn_attribute_name``` to the set
+of attributes for LDAP if it does not exist or does not match the value of ```dn_identifier_type```. This is to satisfy LDAP
+requirements. However, if this attribute is not supported by any of the objectclasses configured, it is not generated in the
+end after all and LDAP will throw an error. Usually, ```dn_attribute_name``` is one of ```cn``` or ```uid```, both of which
+are supported by regular LDAP objectclasses. The ```dn_identifier_type``` should then match the login identifier of the CoPerson
+for example.
+
+Missing Required Attributes
+===========================
+The LFP checks all generated attributes before provisioning to see if all required attributes for the configured objectclasses
+are present. If required attributes are missing, these objectclasses are silently removed. After this step, the LFP checks that all generated attributes are covered by the remaining objectclasses. Any attributes not
+supported by the remaining objectclasses are then also silently removed.
+
+This allows configuration of the ```ldapPublicKey``` objectclass in cases where a subset of the users has a SSH key configured.
+In this case, the LFP will provision all users and only add an SSH key attribute for users that actually have the key uploaded
+in COmanage.
+
 
 Example
 =======

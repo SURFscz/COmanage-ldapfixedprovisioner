@@ -36,7 +36,9 @@ class CoLdapFixedProvisionerDn extends AppModel {
   public $belongsTo = array(
     "LdapFixedProvisioner.CoLdapFixedProvisionerTarget",
     "CoPerson",
-    "CoGroup"
+    "CoGroup",
+    "Co",
+    "Cou"
   );
 
   // Default display field for cake generated views
@@ -64,11 +66,17 @@ class CoLdapFixedProvisionerDn extends AppModel {
       'required' => false,
       'allowEmpty' => true
     ),
+    'cou_id' => array(
+      'rule' => 'numeric',
+      'required' => false,
+      'allowEmpty' => true
+    ),
     'dn' => array(
       'rule' => 'notBlank'
     )
   );
 
+  public $_cache=array("Co"=>array(),"Cou"=>array(),"CoGroup"=>array(),'CoPerson'=>array());  
   /**
    * Assign a DN for a CO.
    *
@@ -84,7 +92,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
 
     // For now, we always construct the DN using cn.
     if(empty($coData['Co']['name'])) {
-      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'ou'));
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'o'));
     }
 
     $basedn = Configure::read('fixedldap.basedn');
@@ -94,6 +102,35 @@ class CoLdapFixedProvisionerDn extends AppModel {
     }
 
     $dn = "o=" . $coData['Co']['name'] . ",".$basedn;
+
+    return $dn;
+  }
+
+
+  /**
+   * Assign a DN for a COU.
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array CO Provisioning Target data
+   * @param  Array COU data
+   * @return String DN
+   * @throws RuntimeException
+   */
+
+  public function assignCouDn($coProvisioningTargetData, $couData) {
+    $dn = "";
+    // For now, we always construct the DN using cn.
+    if(empty($couData['Cou']['name'])) {
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'cn'));
+    }
+
+    $basedn = $this->obtainDn($coProvisioningTargetData, $couData, "co",true);
+    if(empty($basedn)) {
+      // Throw an exception... this should be defined
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
+    }
+
+    $dn = "cn=CO:COU:" . $couData['Cou']['name'] . ",ou=Groups,".$basedn['newdn'];
 
     return $dn;
   }
@@ -212,16 +249,15 @@ class CoLdapFixedProvisionerDn extends AppModel {
    * @throws RuntimeException
    */
 
-  public function dnAttributes($dn, $mode) {
+  public function dnAttributes($dn) {
     // We assume dn is of the form attr1=val1, attr2=val2, basedn
-    // where based matches $coProvisioningTargetData. Strip off basedn
-    // and then split up the remaining string. Note we'll fail if the
-    // base DN changes. Currently, that would require manual cleanup.
+    // Strip off basedn and then split up the remaining string. 
+    // Note we'll fail if the base DN changes. Currently, that 
+    // would require manual cleanup.
 
     $ret = array();
 
     $basedn = Configure::read('fixedldap.basedn');
-
     $attrs = explode(",", rtrim(str_replace($basedn, "", $dn), " ,"));
 
     foreach($attrs as $a) {
@@ -241,8 +277,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
    * @return Array Array of DNs found -- note this array is not in any particular order, and may have fewer entries
    */
 
-  public function dnsForMembers($coGroupMembers, $fulldn=TRUE) {
-    return $this->mapCoGroupMembersToDns($coGroupMembers, FALSE, $fulldn);
+  public function dnsForMembers($coGroupMembers, $stripuid=false) {
+    return $this->mapCoGroupMembersToDns($coGroupMembers, false, $stripuid);
   }
 
   /**
@@ -250,12 +286,136 @@ class CoLdapFixedProvisionerDn extends AppModel {
    *
    * @since  COmanage Registry vTODO
    * @param  Array CO Group Members
-   * @return Array Array of DNs found -- note this array is not in any particular order, and may have fewer entries
+   * @return Array Array of DNs found -- note this array is not in any particular order
    */
 
-  public function dnsForOwners($coGroupMembers) {
-    return $this->mapCoGroupMembersToDns($coGroupMembers, true);
+  public function dnsForOwners($coGroupMembers, $stripuid=false) {
+    return $this->mapCoGroupMembersToDns($coGroupMembers, true, $stripuid);
   }
+
+
+  /**
+   * Map a COU to a set of administrators
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array COU object
+   * @param  Bool stripuid  if set, strips off all but the first attribute of a DN
+   * @return Array Array of DNs found -- note this array is not in any particular order
+   */
+
+  public function dnsForAdmins($cou,$stripuid=false) {
+    // the owners are the members of the related admin group
+    $args = array();
+    $args['conditions']['CoGroup.cou_id'] =$cou['Cou']['id'];
+    $args['conditions']['CoGroup.group_type'] = GroupEnum::Admins; 
+    $args['contain'] = false;
+    $admingroup = $this->CoGroup->find('first', $args);
+    if(!empty($admingroup)) {
+      $args = array();
+      $args['conditions']['CoGroupMember.co_group_id'] = $admingroup['CoGroup']['id'];
+      $args['contain'] = false;
+      $members = $this->CoGroup->CoGroupMember->find('all', $args);
+      $owners = $this->mapCoGroupMembersToDns($members,false,$stripuid);
+      return $owners;
+    }
+    return array();
+  }
+
+  /**
+   * Map all given objects (COUs and CoGroups) to a DN
+   * Also map all members of the CoGroup and members of the COU::members::active group
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array $target     provisioningtarget data
+   * @param  Array $children   list of Cou objects and subgroups
+   * @param  bool  $stripuid   Wether to strip the result to just the first dn attribute
+   * @return Array Array of DNs found 
+   */
+  public function dnsForCous($target, $cou, $children, $stripuid=false) {
+
+    $retval=array();
+    $groups=array();
+    $basedn = Configure::read('fixedldap.basedn');
+
+    if(!empty($children)) {
+      foreach($children as $obj) {
+        try {
+          $obj['Co']=$cou['Co'];
+          if(isset($obj['Cou'])) {
+            $item = $this->obtainDn($target, $obj, "cou",true);
+
+            // Find the relevant active-members group and add all its
+            // members
+            $args = array();
+            $args['conditions']['CoGroup.cou_id'] =$obj['Cou']['parent_id'];
+            $args['conditions']['CoGroup.group_type'] = GroupEnum::ActiveMembers; 
+            $args['contain'] = false;
+            $allgroup = $this->CoGroup->find('first', $args);
+            if(!empty($allgroup)) { 
+              $groups[]=$allgroup;
+            }
+          }
+          else if(isset($obj['CoGroup'])) {
+            $item = $this->obtainDn($target, $obj, "group",true);
+            $groups[]=$obj;
+          }
+          
+          $dn = isset($item['newdn']) ? $item['newdn'] : $item['olddn'];
+          if($stripuid) {
+            $dn=$this->stripDN($dn, $basedn,true ); 
+          }
+          if(!empty($dn)) {
+            $retval[]=$dn;
+          }
+        }
+        catch(RuntimeException $e) {
+        }
+      }
+    } 
+
+    /* skip adding the individual members of the child groups
+    $members=array();
+    $ids=array();
+    foreach($groups as $grp) $ids[] = $grp['CoGroup']['id'];
+
+    $args = array();
+    $args['conditions']['CoGroupMember.co_group_id'] = $ids;
+    $args['contain'] = false;
+    $members = $this->CoGroup->CoGroupMember->find('all', $args);
+    
+    $memberDNs = $this->mapCoGroupMembersToDns($members,false,$stripuid);
+    $retval = array_merge($retval,$memberDNs);
+    */
+    
+    return $retval;
+  }
+
+  /**
+   * Strip a DN down to its base value
+   *
+   * @since  COmanage Registry vTODO
+   * @param  String DN        full DN
+   * @param  String basedn    base domain value
+   * @param  Bool   stripuid  if true, strip of the attribute name part as well (uid=...)  
+   * @return String UID       first attribute part of the whole DN
+   */
+  private function stripDN($dn, $basedn, $stripuid) {
+    $attrs = explode(",", rtrim(str_replace($basedn, "", $dn), " ,"));
+          
+    if(sizeof($attrs)>0) {
+      $item = $attrs[0];
+              
+      if($stripuid) {
+        $attrs=explode("=",$attrs[0],2);
+        if(sizeof($attrs)>1) {
+          $item=$attrs[1];
+        }
+      }
+      $dn=$item;
+     }
+     return $dn;
+  }
+
 
   /**
    * Map a set of CO Group Members to their DNs. A similar function is in CoGroupMember.php.
@@ -267,9 +427,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
    * @return Array Array of DNs found -- note this array is not in any particular order, and may have fewer entries
    */
 
-  private function mapCoGroupMembersToDns($coGroupMembers, $owners=false, $fulldn=TRUE) {
+  private function mapCoGroupMembersToDns($coGroupMembers, $owners=false, $stripuid=false) {
     // Walk through the members and pull the CO Person IDs
-
     $coPeopleIds = array();
 
     foreach($coGroupMembers as $m) {
@@ -288,13 +447,10 @@ class CoLdapFixedProvisionerDn extends AppModel {
       $args['fields'] = array('CoLdapFixedProvisionerDn.co_person_id', 'CoLdapFixedProvisionerDn.dn');
 
       $retval = array_values($this->find('list', $args));
-      if(!$fulldn) {
-        $basedn = Configure::read('fixedldap.basedn');
+      if($stripuid) {
+        $basedn = Configure::read('fixedldap.basedn');        
         array_walk($retval, function(&$item, $key, $basedn) {
-          $attrs = explode(",", rtrim(str_replace($basedn, "", $item), " ,"));
-          if(sizeof($attrs)>0) {
-            $item=$attrs[0];
-          }
+          $item = $this->stripDN($item,$basedn,false);
         }, $basedn);
       }
       return $retval;
@@ -302,7 +458,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       return array();
     }
   }
-
+  
   /**
    * Obtain a DN for a provisioning subject, possibly assigning or reassigning one.
    *
@@ -324,71 +480,98 @@ class CoLdapFixedProvisionerDn extends AppModel {
     $curDnId = null;
     $newDn = null;
     $newDnErr = null;
-    // First see if we have already assigned a DN
-    $args = array();
-    $args['conditions']['CoLdapFixedProvisionerDn.co_ldap_fixed_provisioner_target_id'] = $coProvisioningTargetData['CoLdapFixedProvisionerTarget']['id'];
-    if($mode == 'person') {
-      $args['conditions']['CoLdapFixedProvisionerDn.co_person_id'] = $provisioningData['CoPerson']['id'];
-    } else if($mode == 'co') {
-      $args['conditions']['CoLdapFixedProvisionerDn.co_id'] = $provisioningData['Co']['id'];
-    } else {
-      $args['conditions']['CoLdapFixedProvisionerDn.co_group_id'] = $provisioningData['CoGroup']['id'];
-    }
-    $args['contain'] = false;
 
-    $dnRecord = $this->find('first', $args);
+    // defaults for mode='group'    
+    $subarray='CoGroup';
+    $object_id=-1;
+    $cond="CoLdapFixedProvisionerDn.co_group_id";
+    $field='co_group_id';
+    switch($mode) {
+    case 'person':
+      $object_id = $provisioningData['CoPerson']['id'];
+      $cond = 'CoLdapFixedProvisionerDn.co_person_id';
+      $subarray='CoPerson';
+      $field='co_person_id';
+      break;
+    case 'co':
+      $object_id = $provisioningData['Co']['id'];
+      $cond = 'CoLdapFixedProvisionerDn.co_id';
+      $subarray='Co';
+      $field='co_id';
+      break;
+    case 'cou':
+      $object_id = $provisioningData['Cou']['id'];
+      $cond = 'CoLdapFixedProvisionerDn.cou_id';
+      $subarray='Cou';
+      $field='cou_id';
+      break;
+    default:
+    case 'group':
+      $object_id = $provisioningData['CoGroup']['id'];
+      $cond="CoLdapFixedProvisionerDn.co_group_id";
+      $subarray='CoGroup';
+      $field='co_group_id';
+      break;
+    }    
 
-    if(!empty($dnRecord)) {
-      $curDn = $dnRecord['CoLdapFixedProvisionerDn']['dn'];
-      $curDnId = $dnRecord['CoLdapFixedProvisionerDn']['id'];
-    }
+    // check the cache first
+    if(!isset($this->_cache[$subarray]["key_".$object_id])) {
+      
+      // Check the database
+      $args = array();
+      $args['conditions']['CoLdapFixedProvisionerDn.co_ldap_fixed_provisioner_target_id'] = $coProvisioningTargetData['CoLdapFixedProvisionerTarget']['id'];
+      $args['conditions'][$cond] = $object_id;
+      $args['contain'] = false;
+      $dnRecord = $this->find('first', $args);
 
-    // We always try to (re)calculate the DN, but only store it if $assign is true.
-    try {
-      if($mode == 'person') {
-        $newDn = $this->assignPersonDn($coProvisioningTargetData, $provisioningData);
-      } else if($mode == 'co') {
-        $newDn = $this->assignCoDn($coProvisioningTargetData, $provisioningData);
-      } else {
-        $newDn = $this->assignGroupDn($coProvisioningTargetData, $provisioningData);
+      if(!empty($dnRecord)) {
+        $curDn = $dnRecord['CoLdapFixedProvisionerDn']['dn'];
+        $curDnId = $dnRecord['CoLdapFixedProvisionerDn']['id'];
       }
-    }
-    catch(Exception $e) {
-      // Rather than throw an exception, store the error in the return array.
-      // We do this because there are many common times we will fail to assign a
-      // DN (especially on user creation and deletion), so we'll pass the error
-      // up the stack and let the calling function decide what to do.
-      $newDnErr = $e->getMessage();
-    }
 
-    if($assign) {
-      // If the the DN doesn't match the existing DN (including if there is no
-      // existing DN), update it
-      if($newDn && ($curDn != $newDn)) {
-        $newDnRecord = array();
-        $newDnRecord['CoLdapFixedProvisionerDn']['co_ldap_fixed_provisioner_target_id'] = $coProvisioningTargetData['CoLdapFixedProvisionerTarget']['id'];
+      // We always try to (re)calculate the DN, but only store it if $assign is true.
+      try {
         if($mode == 'person') {
-          $newDnRecord['CoLdapFixedProvisionerDn']['co_person_id'] = $provisioningData['CoPerson']['id'];
-        } else if ($mode == "co") {
-          $newDnRecord['CoLdapFixedProvisionerDn']['co_id'] = $provisioningData['Co']['id'];
+          $newDn = $this->assignPersonDn($coProvisioningTargetData, $provisioningData);
+        } else if($mode == 'co') {
+          $newDn = $this->assignCoDn($coProvisioningTargetData, $provisioningData);
+        } else if($mode == 'cou') {
+          $newDn = $this->assignCouDn($coProvisioningTargetData, $provisioningData);
         } else {
-          $newDnRecord['CoLdapFixedProvisionerDn']['co_group_id'] = $provisioningData['CoGroup']['id'];
-        }
-        $newDnRecord['CoLdapFixedProvisionerDn']['dn'] = $newDn;
-
-        if(!empty($dnRecord)) {
-          $newDnRecord['CoLdapFixedProvisionerDn']['id'] = $dnRecord['CoLdapFixedProvisionerDn']['id'];
-        }
-
-        if(!$this->save($newDnRecord)) {
-          throw new RuntimeException(_txt('er.db.save'));
+          $newDn = $this->assignGroupDn($coProvisioningTargetData, $provisioningData);
         }
       }
-    }
+      catch(Exception $e) {
+        // Rather than throw an exception, store the error in the return array.
+        // We do this because there are many common times we will fail to assign a
+        // DN (especially on user creation and deletion), so we'll pass the error
+        // up the stack and let the calling function decide what to do.
+        $newDnErr = $e->getMessage();
+      }
 
-    return array('olddn'    => $curDn,
+      if($assign) {
+        // If the the DN doesn't match the existing DN (including if there is no
+        // existing DN), update it
+        if($newDn && ($curDn != $newDn)) {
+          $newDnRecord = array();
+          $newDnRecord['CoLdapFixedProvisionerDn']['co_ldap_fixed_provisioner_target_id'] = $coProvisioningTargetData['CoLdapFixedProvisionerTarget']['id'];
+          $newDnRecord['CoLdapFixedProvisionerDn'][$field] = $object_id;
+          $newDnRecord['CoLdapFixedProvisionerDn']['dn'] = $newDn;
+
+          if(!empty($dnRecord)) {
+            $newDnRecord['CoLdapFixedProvisionerDn']['id'] = $dnRecord['CoLdapFixedProvisionerDn']['id'];
+          }
+          $this->clear();
+          if(!$this->save($newDnRecord)) {
+            throw new RuntimeException(_txt('er.db.save'));
+          }
+        }
+      }
+      $this->_cache[$subarray]["key_".$object_id] = array('olddn'    => $curDn,
                  'olddnid'  => $curDnId,
                  'newdn'    => $newDn,
                  'newdnerr' => $newDnErr);
+    }
+    return $this->_cache[$subarray]["key_".$object_id];                
   }
 }

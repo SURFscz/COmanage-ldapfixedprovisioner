@@ -50,6 +50,7 @@ $cm_ldap_fixed_provisioner_texts['en_US'] = array(
   'er.ldapfixedprovisioner.add1'           => 'LDAP error during add of CO OU',
   'er.ldapfixedprovisioner.add2'           => 'LDAP error during add of people OU of CO',
   'er.ldapfixedprovisioner.add3'           => 'LDAP error during add of groups OU of CO',
+  'er.ldapfixedprovisioner.delete'         => 'LDAP error during delete',
   'er.ldapfixedprovisioner.dn.component'   => 'DN component %1$s not available',
   'er.ldapfixedprovisioner.dn.config'      => 'DN configuration invalid',
   'er.ldapfixedprovisioner.dn.noattr'      => 'DN attributes not found for CO Person %1$s',
