@@ -118,7 +118,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           break;
         } 
         else if($co) {
-          $attribute[$lattr][] = "CO:COU:".$provisioningData['Co']['name'];
+          $attribute[$lattr][] = "CO:".$provisioningData['Co']['name'];
           break;
         } 
         else if($group) {
@@ -599,8 +599,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 if(!empty($dn['newdn'])) {
                   $attribute[$attr][] = $dn['newdn'];
                 }
-                
-                if(  isset($gm['CoGroup']['cou_id']) 
+
+                if(  isset($gm['CoGroup']['cou_id'])
                   && !empty($gm['CoGroup']['cou_id'])
                   && ($gm['CoGroup']['group_type'] == GroupEnum::ActiveMembers)
                   ) {
@@ -610,7 +610,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                   $args['contain'] = false;
                   $data = $this->CoLdapFixedProvisionerDn->Cou->find('first', $args);
                   if(!empty($data)) {
-                    $data=array_merge($gm,array('Co'=>$provisioningData['Co']));
+                    $dt=array_merge($data,array('Co'=>$provisioningData['Co']));
                     //$this->dev_log('calling obtainDn with '.json_encode($dt));
                     $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'cou',false);
                     if(!empty($dn['newdn'])) {
@@ -639,11 +639,11 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 $attribute[$attr][] = $dn['newdn'];
               }
             }
-          } 
+          }
           else {
             // a member of the CO top group
-            $attribute[$attr][]=$this->groupdn;
-          }           
+            $attribute[$attr][]="cn=CO:".$provisioningData['Co']['name'].",".$this->groupdn;
+          }
         }
         else if($cou) {
           $this->dev_log('isMemberOf for a COU record');
@@ -662,18 +662,18 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 $attribute[$attr][] = $dn['newdn'];
               }
             }
-          } 
+          }
           else {
             // a member of the CO top group
-            $attribute[$attr][]=$this->groupdn;
-          }             
+            $attribute[$attr][]="cn=CO:".$provisioningData['Co']['name'].",".$this->groupdn;
+          }
         }
         break;
       case 'member':
         if($group) {
           # groupOfNames
           $attribute[$attr] = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers, FALSE);
-        } 
+        }
         else if($cou || $co) {
           $attribute[$attr] = $this->CoLdapFixedProvisionerDn->dnsForCous($this->targetData, $provisioningData, $groupMembers, FALSE);
         }
@@ -992,8 +992,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $attropts = ($person && Configure::read('fixedldap.attr_opts'));
     //$this->dev_log("attropts is ".($attropts ? "TRUE":"FALSE"));
 
-    $uam = Configure::read('fixedldap.remove_unused');
-    $uam = ($uam !== null && $uam) ? true : false;
     $scope_suffix = $this->templateReplace(Configure::read('fixedldap.scope_suffix'), $provisioningData);
     //$this->dev_log("provisioning for person: ".($person?"TRUE":"FALSE")." and group: ".($group?"TRUE":"FALSE")." and scope $scope_suffix");
 
@@ -1285,6 +1283,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     if(!Configure::read('fixedldap')) Configure::load('ldapfixedprovisioner');
     $basedn=Configure::read('fixedldap.basedn');
     $schemata=Configure::read('fixedldap.schemata');
+    $this->peopledn = "ou=People,$basedn";
+    $this->groupdn="ou=Groups,$basedn";
     
     // 'cache' data on this provisioning object, so we don't have to pass it around to
     // all methods
@@ -1306,12 +1306,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $cid = $person ? $provisioningData['CoPerson']['id'] : $provisioningData['CoGroup']['id'];
     // Next, obtain a DN for this person or group
     try {
+      $type= $person ? 'person' : 'group';
       $dns = $this->CoLdapFixedProvisionerDn->obtainDn(
                 $this->targetData,
                 $provisioningData,
-                $person ? 'person' : 'group',
+                $type,
                 $assigndn);
-      $this->dev_log("retrieved new dns for person/group: ".json_encode($dns));
+      $this->dev_log("retrieved new dns for $type: ".json_encode($dns));
     } catch (RuntimeException $e) {
       // This mostly never matches because $dns['newdnerr'] will usually be set
       throw new RuntimeException($e->getMessage());
@@ -1437,7 +1438,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           // Change to an add operation.
           $this->dev_log('changing to ADD operation');
           $add = true;
-          $attributes=$this->removeEmptyAttributes($attributes);
         } else {
           $this->log(_txt('er.ldapfixedprovisioner.modify').": ".$this->ldap_error() . 
               " (".$this->ldap_errno() .", coperson: $cid)", 'error');
@@ -1454,6 +1454,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     }
 
     if ($add) {
+      $attributes=$this->removeEmptyAttributes($attributes);
       // Write a new entry
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
@@ -2153,6 +2154,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function verifyLdapServer($url, $binddn, $password, $basedn, $co)
   {
+    $this->peopledn = "ou=People,$basedn";
+    $this->groupdn="ou=Groups,$basedn";
     $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $co);
 
     $results = $this->queryLdap($url, $binddn, $password, $this->peopledn, "(objectclass=*)", array("dn"));
@@ -2177,11 +2180,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    * @param  Array CO data
    * @return Boolean True
    */
-  public function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
+  private function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
   {
     $dn = "o=$coData,$basedn";
-    $this->peopledn = "ou=People,$dn";
-    $this->groupdn="ou=Groups,$dn";
     $retval=array("","");
 
     if (!$this->connectLdap($url, $binddn, $password)) {
@@ -2263,7 +2264,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       if(!isset($configured[$val["oc"]])) $configured[$val["oc"]] = array();
       $configured[$val["oc"]][$attr] = array(
             'attribute' => $attr,
-            'objectclass' => $val[$oc],
+            'objectclass' => $val['oc'],
             'type' => isset($val['type']) ? $val["type"] : TRUE,
             'export' => 1,
             'use_org_value' => 0,
@@ -2438,7 +2439,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       else {
         $this->dev_log("setting DN based on name and groupdn $this->groupdn");
         // The main CO object is always called CO
-        $dn="cn=CO:COU:".$cou['Co']['name'].",".$this->groupdn;
+        $dn="cn=CO:".$cou['Co']['name'].",".$this->groupdn;
         $dns = array('olddn' => $dn, 'newdn' => $dn);
       }
       $this->dev_log("retrieved new dns for COU: ".json_encode($dns));
