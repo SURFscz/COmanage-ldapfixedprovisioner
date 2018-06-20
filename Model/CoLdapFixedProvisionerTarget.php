@@ -60,6 +60,36 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   // Cache of schema plugins, populated by supportedAttributes
   protected $plugins = array();
 
+
+  /**
+   * Convenience function to determine the correct group prefix
+   *
+   * @since  COmanage Registry vTODO
+   * @param  String object type
+   * @return String Prefix to apply before database name
+   */
+  public function prefix($type) {
+    switch($type) {
+    case 'co': return 'CO:';
+    case 'cou': return 'COU:';
+    case 'group': return 'GRP:';
+    default:
+      break;
+    }
+    return '';
+  }
+
+  /**
+   * Create a DN for the CO root group
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array CO data
+   * @return String CO DN within the ou=Groups,o=<CO name>,<baseDN> tree
+   */
+  public function coDn($codata) {
+    return "cn=".$this->prefix('co').$codata['Co']['name'].",".$this->groupdn;
+  }
+
   /**
    * Create a gidNumber for a CoGroup
    *
@@ -114,15 +144,15 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // Name attributes
       case 'cn':
         if($cou) {
-          $attribute[$lattr][] = "CO:COU:".$provisioningData['Cou']['name'];
+          $attribute[$lattr][] = $this->prefix('cou').$provisioningData['Cou']['name'];
           break;
         } 
         else if($co) {
-          $attribute[$lattr][] = "CO:".$provisioningData['Co']['name'];
+          $attribute[$lattr][] = $this->prefix('co').$provisioningData['Co']['name'];
           break;
         } 
         else if($group) {
-          $attribute[$lattr][] = $provisioningData['CoGroup']['name'];
+          $attribute[$lattr][] = $this->prefix('group').$provisioningData['CoGroup']['name'];
           break;
         }
         // else person, fall through
@@ -179,8 +209,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         // a COU always falls under the Groups organizationalUnit
         if($cou || $co || $group) {
           switch($attr)  {
-          case 'ou':          
-            $attribute[$attr]='Groups';
+          case 'ou':
+            if($group) $attribute[$attr]='group';
+            if($cou) $attribute[$attr]='cou';
+            if($co) $attribute[$attr]='co';
             break;
           case 'o':
             $attribute[$attr]=$provisioningData['Co']['name'];
@@ -642,7 +674,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           }
           else {
             // a member of the CO top group
-            $attribute[$attr][]="cn=CO:".$provisioningData['Co']['name'].",".$this->groupdn;
+            $attribute[$attr][]=$this->coDn($provisioningData);
           }
         }
         else if($cou) {
@@ -665,7 +697,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           }
           else {
             // a member of the CO top group
-            $attribute[$attr][]="cn=CO:".$provisioningData['Co']['name'].",".$this->groupdn;
+            $attribute[$attr][]=$this->coDn($provisioningData);
           }
         }
         break;
@@ -1283,8 +1315,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     if(!Configure::read('fixedldap')) Configure::load('ldapfixedprovisioner');
     $basedn=Configure::read('fixedldap.basedn');
     $schemata=Configure::read('fixedldap.schemata');
-    $this->peopledn = "ou=People,$basedn";
-    $this->groupdn="ou=Groups,$basedn";
+    $this->peopledn = "ou=People,o=" . $provisioningData['Co']['name'].",".$basedn;
+    $this->groupdn="ou=Groups,o=" . $provisioningData['Co']['name'].",".$basedn;
     
     // 'cache' data on this provisioning object, so we don't have to pass it around to
     // all methods
@@ -2154,8 +2186,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function verifyLdapServer($url, $binddn, $password, $basedn, $co)
   {
-    $this->peopledn = "ou=People,$basedn";
-    $this->groupdn="ou=Groups,$basedn";
+    $this->peopledn = "ou=People,o=" . $co.",".$basedn;
+    $this->groupdn="ou=Groups,o=" . $co.",".$basedn;
     $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $co);
 
     $results = $this->queryLdap($url, $binddn, $password, $this->peopledn, "(objectclass=*)", array("dn"));
@@ -2253,9 +2285,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $cfg = array(
       "cn" => array("oc"=>"groupOfNames"),
       "member" => array("oc"=>"groupOfNames"),
-//      "owner" => array("oc"=>"groupOfNames"),
+      "owner" => array("oc"=>"groupOfNames"),
       "description" => array("oc"=>"groupOfNames"),
-      "o" => array("oc"=>"groupOfNames")
+      "o" => array("oc"=>"groupOfNames"),
+      "ou" => array("oc"=>"groupOfNames")
     );
 
     // transform the configuration into a set usable by generateAttribute
@@ -2438,8 +2471,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
       else {
         $this->dev_log("setting DN based on name and groupdn $this->groupdn");
-        // The main CO object is always called CO
-        $dn="cn=CO:".$cou['Co']['name'].",".$this->groupdn;
+        $dn=$this->coDn($cou);
         $dns = array('olddn' => $dn, 'newdn' => $dn);
       }
       $this->dev_log("retrieved new dns for COU: ".json_encode($dns));
@@ -2603,9 +2635,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $cfg = array(
       "cn" => array("oc"=>"groupOfNames"),
       "member" => array("oc"=>"groupOfNames"),
-//      "owner" => array("oc"=>"groupOfNames"),
+      "owner" => array("oc"=>"groupOfNames"),
       "description" => array("oc"=>"groupOfNames"),
-      "o" => array("oc"=>"groupOfNames")
+      "o" => array("oc"=>"groupOfNames"),
+      "ou" => array("oc"=>"groupOfNames")
     );
 
     // transform the configuration into a set usable by generateAttribute

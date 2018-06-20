@@ -130,7 +130,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "cn=CO:COU:" . $couData['Cou']['name'] . ",ou=Groups,".$basedn['newdn'];
+    $dn = "cn=" . $this->CoLdapFixedProvisionerTarget->prefix('cou').$couData['Cou']['name'] . ",ou=Groups,".$basedn['newdn'];
 
     return $dn;
   }
@@ -159,7 +159,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "cn=" . $coGroupData['CoGroup']['name']. ",ou=Groups,".$basedn['newdn'];
+    $dn = "cn=" . $this->CoLdapFixedProvisionerTarget->prefix('group'). $coGroupData['CoGroup']['name']. ",ou=Groups,".$basedn['newdn'];
     return $dn;
   }
 
@@ -298,7 +298,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
    * Map a COU to a set of administrators
    *
    * @since  COmanage Registry vTODO
-   * @param  Array COU object
+   * @param  Array COU or CO object
    * @param  Bool stripuid  if set, strips off all but the first attribute of a DN
    * @return Array Array of DNs found -- note this array is not in any particular order
    */
@@ -306,7 +306,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
   public function dnsForAdmins($cou,$stripuid=false) {
     // the owners are the members of the related admin group
     $args = array();
-    $args['conditions']['CoGroup.cou_id'] =$cou['Cou']['id'];
+    $args['conditions']['CoGroup.cou_id'] =$cou['Co']['id'];
+    $args['conditions']['CoGroup.cou_id'] =isset($cou['Cou']) ? $cou['Cou']['id'] : null;
     $args['conditions']['CoGroup.group_type'] = GroupEnum::Admins; 
     $args['contain'] = false;
     $admingroup = $this->CoGroup->find('first', $args);
@@ -373,7 +374,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
       }
     } 
 
-    /* skip adding the individual members of the child groups
     $members=array();
     $ids=array();
     foreach($groups as $grp) $ids[] = $grp['CoGroup']['id'];
@@ -385,7 +385,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
     
     $memberDNs = $this->mapCoGroupMembersToDns($members,false,$stripuid);
     $retval = array_merge($retval,$memberDNs);
-    */
     
     return $retval;
   }
