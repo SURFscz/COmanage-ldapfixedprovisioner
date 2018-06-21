@@ -1195,12 +1195,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         $this->log('PersonAdded operation without CoPerson data','debug');
         return true;
       }
-      // On add, we issue a delete (for housekeeping purposes, it will mostly fail)
-      // and then an add. Note that various other operations will be promoted from
-      // modify to add if there is no record in LDAP, so don't make this modify.
       $assigndn = true;
-      $delete = true;
-      $add = true;
+      $modify = true;
       $person = true;
       break;
     case ProvisioningActionEnum::CoPersonDeleted:
@@ -1213,9 +1209,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // provisioner behavior invoked, we do not allow dependent=true to delete
       // the DN. Instead, we manually delete it
       $deletedn = true;
-      $assigndn = false;
       $delete = true;
-      $add = false;
       $person = true;
       break;
     case ProvisioningActionEnum::CoPersonPetitionProvisioned:
@@ -1245,10 +1239,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
       if (!in_array(
         $provisioningData['CoPerson']['status'],
-        array(StatusEnum::Active,
-              StatusEnum::Expired,
-              StatusEnum::GracePeriod,
-              StatusEnum::Suspended)
+        array(StatusEnum::Active)
         )) {
         // Convert this to a delete operation. Basically we (may) have a record in LDAP,
         // but the person is no longer active. Don't delete the DN though, since
@@ -1269,7 +1260,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         return true;
       }
       $assigndn = true;
-      $delete = false;  // Arguably, this should be true to clear out any prior debris
       $add = true;
       break;
     case ProvisioningActionEnum::CoGroupDeleted:
