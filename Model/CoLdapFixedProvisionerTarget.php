@@ -2357,6 +2357,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     else {
       $args = array();
       $args['conditions']['Cou.parent_id'] = null;
+      $args['conditions']['Cou.co_id'] = $cid;
       $args['contain'] = false;
       $groupMembers = $this->CoLdapFixedProvisionerDn->Cou->find('all', $args);
     }
