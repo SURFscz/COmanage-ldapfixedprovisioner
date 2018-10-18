@@ -2305,7 +2305,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       return $this->addCOU($cou, $configured);
       break;
     case ProvisioningActionEnum::CoGroupDeleted:
-      return $this->deleteCOU($cou, $objectclasses);
+      return $this->deleteCOU($cou, $configured);
       break;
     default:
       break;
@@ -2565,7 +2565,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    * @param  String $groupdn         base DN to delete COU from
    * @return Boolean True
    */
-  private function deleteCOU($cou, $objectclasses) {
+  private function deleteCOU($cou, $configured) {
     // deleting a COU will not provision the parent groups, as 
     // the group memberships do not change. So we need to update the
     // parent COU
@@ -2576,7 +2576,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       $parent = $this->CoLdapFixedProvisionerDn->Cou->find('first', $args);
       if(!empty($parent)) {
         $parent['Co']=$cou['Co'];
-        $this->addCOU($parent, $objectclasses, $cou);
+        $this->addCOU($parent, $configured, $cou);
       } 
     }
 
