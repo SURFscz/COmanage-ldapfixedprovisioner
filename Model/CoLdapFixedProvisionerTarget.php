@@ -1393,15 +1393,20 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $provisioningData['Co']['name']);
 
     if ($delete) {
+      $this->dev_log('Delete operation');
       // Delete any previous entry. For now, ignore any error.
       if ($rename || !$dns['newdn']) {
         // Use the old DN if we're renaming or if there is no new DN
         // (which should be the case for a delete operation).
-        $this->ldap_delete($dns['olddn']);
+        if(!$this->ldap_delete($dns['olddn'])) {
+          $this->dev_log("Delete of old entry: ".$this->ldap_error() ." (".$this->ldap_errno() .", coperson: $cid)");
+        }
       } else {
         // It's actually not clear when we'd get here -- perhaps cleaning up
         // a record that exists in LDAP even though it's new to Registry?
-        $this->ldap_delete($dns['newdn']);
+        if(!$this->ldap_delete($dns['newdn'])) {
+          $this->dev_log("Delete of new entry: ".$this->ldap_error() ." (".$this->ldap_errno() .", coperson: $cid)");
+        }
       }
 
       if ($deletedn) {

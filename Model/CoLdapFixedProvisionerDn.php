@@ -335,7 +335,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
   public function dnsForCous($target, $cou, $children, $stripuid=false) {
 
     $retval=array();
-    $groups=array();
     $basedn = Configure::read('fixedldap.basedn');
 
     if(!empty($children)) {
@@ -345,20 +344,9 @@ class CoLdapFixedProvisionerDn extends AppModel {
           if(isset($obj['Cou'])) {
             $item = $this->obtainDn($target, $obj, "cou",true);
 
-            // Find the relevant active-members group and add all its
-            // members
-            $args = array();
-            $args['conditions']['CoGroup.cou_id'] =$obj['Cou']['parent_id'];
-            $args['conditions']['CoGroup.group_type'] = GroupEnum::ActiveMembers; 
-            $args['contain'] = false;
-            $allgroup = $this->CoGroup->find('first', $args);
-            if(!empty($allgroup)) { 
-              $groups[]=$allgroup;
-            }
           }
           else if(isset($obj['CoGroup'])) {
             $item = $this->obtainDn($target, $obj, "group",true);
-            $groups[]=$obj;
           }
           
           $dn = isset($item['newdn']) ? $item['newdn'] : $item['olddn'];
@@ -374,18 +362,6 @@ class CoLdapFixedProvisionerDn extends AppModel {
       }
     } 
 
-    $members=array();
-    $ids=array();
-    foreach($groups as $grp) $ids[] = $grp['CoGroup']['id'];
-
-    $args = array();
-    $args['conditions']['CoGroupMember.co_group_id'] = $ids;
-    $args['contain'] = false;
-    $members = $this->CoGroup->CoGroupMember->find('all', $args);
-    
-    $memberDNs = $this->mapCoGroupMembersToDns($members,false,$stripuid);
-    $retval = array_merge($retval,$memberDNs);
-    
     return $retval;
   }
 
