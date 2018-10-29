@@ -963,7 +963,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
     }
     $ocs=$newocs;
-    
+    unset($attributes["objectclass"]);
+
     // export only fields covered by one of the objectclasses we export
     // We copy the attribute values of those fields, and anything we leave
     // behind is discarded
@@ -995,7 +996,28 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         }
       }
     }
-    $this->dev_log("not generating attributes ".json_encode($attributes));
+
+    // all left-over attributes, even if we do not support the objectClass,
+    // need to be set to an empty array, so they are deleted if they are
+    // present nonetheless. This is required for cases where we had an
+    // LdapPublicKey objectclass at first, but the sshPublicKey is deleted.
+    // Because the LdapPublicKey OC is no longer complete, we do not export
+    // that OC. But we do need to delete the existing entry for sshPublicKey
+    // in the LDAP, or else we get an OC error.
+    foreach($attributes as $attr=>$val) {
+      if(!isset($newattributes[$attr])) {
+        $newattributes[$attr]=[];
+      }
+      if(isset($attroptions[$attr])) {
+        foreach($attroptions[$attr] as $attropt) {
+          if(!isset($newattributes[$attropt])) {
+            $newattributes[$attropt]=[];
+          }
+        }
+      }
+    }
+
+    $this->dev_log("explicitely deleting attributes ".json_encode($attributes));
     $attributes=$newattributes;
     $attributes["objectclass"]=$ocs;    
     
