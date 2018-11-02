@@ -108,6 +108,16 @@ class LdapServiceBehavior extends ModelBehavior
         return @ldap_mod_replace($this->settings[$Model->alias]["cxn"], $dn, $attributes);
     }
 
+    public function ldap_mod_del(Model $Model, $dn, $attributes)
+    {
+        return @ldap_mod_del($this->settings[$Model->alias]["cxn"], $dn, $attributes);
+    }
+
+    public function ldap_mod_add(Model $Model, $dn, $attributes)
+    {
+        return @ldap_mod_add($this->settings[$Model->alias]["cxn"], $dn, $attributes);
+    }
+
     public function ldap_delete(Model $Model, $dn)
     {
         return @ldap_delete($this->settings[$Model->alias]["cxn"], $dn);

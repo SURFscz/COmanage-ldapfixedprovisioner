@@ -1198,6 +1198,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
     // determine if the operation is for a person or for a group
     $person   = false;
+    $group    = false;
 
     if(!isset($provisioningData['Co'])) {
       $data = $this->CoProvisioningTarget->Co->find('first',array("conditions"=>array("Co.id"=>$provisioningData[$person ? "CoPerson": "CoGroup"]['co_id'])));
@@ -1292,6 +1293,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
       $delete = true;
       $deletedn = true;
+      $group = true;
       break;
     case ProvisioningActionEnum::CoGroupUpdated:
       // this state is triggered when group members are added or removed
@@ -1303,6 +1305,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
       $assigndn = true;
       $modify = true;
+      $group = true;
       break;
     case ProvisioningActionEnum::CoGroupReprovisionRequested:
       // this state should only apply to a group model
@@ -1313,6 +1316,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       $assigndn = true;
       $delete = true;
       $add = true;
+      $group = true;
       break;
     case ProvisioningActionEnum::AuthenticatorUpdated:
     case ProvisioningActionEnum::CoEmailListAdded:
@@ -1334,7 +1338,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // all methods
     $this->targetData = $coProvisioningTargetData;
 
-    if (!$person) {
+    if ($group) {
       // If this is a group action and no Group Base DN is defined, or the object class groupOfNames is not generated,
       // then don't try to do anything.
       if (empty($basedn)
@@ -1394,7 +1398,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       } catch (UnderflowException $e) {
         // We have a group with no members. Convert to a delete operation since
         // empty groups are meaningless
-        if (!$person) {
+        if ($group) {
           $add = false;
           $modify = false;
           $delete = true;
@@ -1454,7 +1458,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // the old DN is complete while the new DN is relative.
       if ($person) {
         $basedn = $this->peopledn;
-      } else {
+      } else if ($group) {
         $basedn = $this->groupdn;
       }
 
@@ -1528,8 +1532,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
     // if we are provisioning (or deprovisioning) a group, check to see if it is part of a COU
     // If so, we might need to provision (or deprovision) the COU
-    if(!$person) {
-      $this->dev_log('not a person, so testing for cou_id in '.json_encode($provisioningData["CoGroup"]));
+    if($group) {
+      $this->dev_log('group provisioning, so testing for cou_id in '.json_encode($provisioningData["CoGroup"]));
       if(!empty($provisioningData['CoGroup']['cou_id'])) {
         $this->dev_log('Provisioning a COU');
         $this->provisionCOU($provisioningData, $op);
@@ -1538,6 +1542,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         $this->dev_log('Provisioning CO as top-group');
         // this is a top-group. Make sure we add it to our ou=Groups object as a member
         $this->provisionCO($provisioningData, $op);
+      }
+
+      // Also, if we are renaming a group, make sure all the isMemberOf entries of all group members are
+      // updated as well
+      if($rename) {
+        $this->dev_log("group rename, so checking for member attributes");
+        $this->updateMemberAttribute($provisioningData, $dns['olddn'],$dns['newdn']);
       }
     }
 
@@ -2686,6 +2697,62 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // there can never be a delete operation on a CO in this way
     default:
       break;
+    }
+  }
+
+  // convenience function to quickly check if a certain attribute from an objectclass
+  // is actually configured for export
+  private function attributeEnabled($oc, $attr) {
+    $supported = $this->supportedAttributes();
+    $configured = $this->configuredAttributes();
+
+    $this->dev_log("checking for $oc.$attr");
+    if(in_array($oc,array_keys($supported))) {
+      $this->dev_log("in supported ocs");
+      if ($supported[$oc]['objectclass']['required'] || isset($configured[$oc])) {
+        $this->dev_log("objectclass required or configured");
+        if(in_array($attr, array_keys($supported[$oc]["attributes"]))) {
+          $this->dev_log("attribute in supported oc");
+          return $supported[$oc]['attributes'][$attr]['required'] || isset($configured[$oc][$attr]);
+        }
+      }
+    }
+    return FALSE;
+  }
+
+  // Update group names of group members in case of group DN renaming
+  //
+  // In case the Group is provisioned due to a rename, the Group DN changes. However, the CoPerson
+  // records are not reprovisioned. The reverse is true: if a CoPerson Identifier changes, all the
+  // groups of that CoPerson are reprovisioned as well, just in case the DN changes.
+  //
+  // We determine all group members and replace their relevant attribute
+  // COU and COs are already reprovisioned when a group is provisioned, so the member attributes
+  // of those entries have been updated
+
+  private function updateMemberAttribute($group, $olddn, $newdn) {
+    $isMemberOfEnabled = $this->attributeEnabled('eduMember','isMemberOf');
+
+    if($isMemberOfEnabled) {
+      $this->dev_log("IsMemberOf is enabled, replacing group DN");
+      $oldattrs=array("IsMemberOf"=>$olddn);
+      $newattrs=array("IsMemberOf"=>$newdn);
+
+      $args = array();
+      $args['conditions']['CoGroupMember.co_group_id'] = $group['CoGroup']['id'];
+      $args['contain'] = false;
+
+      $groupMembers = $this->CoLdapFixedProvisionerDn->CoGroup->CoGroupMember->find('all', $args);
+      $dns = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers, false);
+
+      foreach($dns as $dn) {
+        $this->dev_log("trying del/add on ".$dn);
+        if($this->ldap_mod_del($dn, $oldattrs)) {
+          $this->dev_log("del succeeded");
+          $this->ldap_mod_add($dn, $newattrs);
+        }
+        $this->dev_log($this->ldap_error());
+      }
     }
   }
 

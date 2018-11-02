@@ -558,6 +558,15 @@ class LdapServiceBehavior extends ModelBehavior {
       return $this->next_result();
     }
 
+    public function ldap_mod_add(Model $Model, $dn, $attributes) {
+      LdapServiceBehavior::$content[]=array("ldap_mod_add",array($dn, $attributes));
+      return $this->next_result();
+    }
+    public function ldap_mod_del(Model $Model, $dn, $attributes) {
+      LdapServiceBehavior::$content[]=array("ldap_mod_del",array($dn, $attributes));
+      return $this->next_result();
+    }
+
     public function ldap_delete(Model $Model, $dn) {
       LdapServiceBehavior::$content[]=array("ldap_delete",array($dn));
       return $this->next_result();
