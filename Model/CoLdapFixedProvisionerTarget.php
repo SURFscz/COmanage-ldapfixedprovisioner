@@ -259,6 +259,14 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
                 $attribute[$lrattr][] = $affilmap[ $r[ $cols[$attr] ] ] . $scope;
               }
+            } else if($attr == "employeeType" ) {
+              // if this is a role for a specific COU, scope it with the name of the COU
+              $scope = 'CO:'.$provisioningData['Co']['name'];
+
+              if($r['cou_id']!== null && $r['Cou']) {
+                $scope = 'COU:'.$r['Cou']['name'];
+              }
+              $attribute[$lrattr][] = $scope . ':'.$r[ $cols[$attr] ];
             } else {
               $attribute[$lrattr][] = $r[ $cols[$attr] ];
             }
