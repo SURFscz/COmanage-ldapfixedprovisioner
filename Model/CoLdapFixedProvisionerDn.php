@@ -336,6 +336,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
 
     $retval=array();
     $basedn = Configure::read('fixedldap.basedn');
+    $groups = array();
 
     if(!empty($children)) {
       foreach($children as $obj) {
@@ -343,10 +344,14 @@ class CoLdapFixedProvisionerDn extends AppModel {
           $obj['Co']=$cou['Co'];
           if(isset($obj['Cou'])) {
             $item = $this->obtainDn($target, $obj, "cou",true);
-
           }
           else if(isset($obj['CoGroup'])) {
             $item = $this->obtainDn($target, $obj, "group",true);
+
+            // if this is the active:members group, add its members as well
+            if($obj['CoGroup']['group_type'] == GroupEnum::ActiveMembers) {
+              $groups[]=$obj;
+            }
           }
           
           $dn = isset($item['newdn']) ? $item['newdn'] : $item['olddn'];
@@ -361,6 +366,17 @@ class CoLdapFixedProvisionerDn extends AppModel {
         }
       }
     } 
+
+    $ids=array();
+    foreach($groups as $grp) $ids[] = $grp['CoGroup']['id'];
+
+    $args = array();
+    $args['conditions']['CoGroupMember.co_group_id'] = $ids;
+    $args['contain'] = false;
+    $members = $this->CoGroup->CoGroupMember->find('all', $args);
+
+    $memberDNs = $this->mapCoGroupMembersToDns($members,false,$stripuid);
+    $retval = array_merge($retval,$memberDNs);
 
     return $retval;
   }
