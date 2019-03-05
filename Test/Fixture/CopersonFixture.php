@@ -130,6 +130,18 @@ class CopersonFixture extends CakeTestFixture {
             "deleted" => "0",
             "actor_identifier" => null
         ),
+        array(
+            "id" => 9,
+            "co_id" => "3",
+            "status" => "Y",
+            "timezone" =>null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "co_person_id" => null,
+            "revision" => "0",
+            "deleted" => "0",
+            "actor_identifier" => null
+        ),
       );
 
       $this->records = $records;

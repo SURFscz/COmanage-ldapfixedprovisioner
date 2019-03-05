@@ -1,6 +1,6 @@
 <?php
 /**
- * COmanage Registry OrgIdentity Fixture
+ * COmanage Registry Attribute Enumeration
  *
  * Portions licensed to the University Corporation for Advanced Internet
  * Development, Inc. ("UCAID") under one or more contributor license agreements.
@@ -25,50 +25,15 @@
  * @license       Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
  */
 
-class OrgidentityFixture extends CakeTestFixture {
+class CodashboardFixture extends CakeTestFixture {
     // Import schema for the model from the default database.
     // The fixture data itself will be written to test and
     // not default.
-    public $import = array('model' => 'OrgIdentity', 'connection' => 'default');
+    public $import = array('model' => 'CoDashboard', 'connection' => 'default');
 
     public function init() {
 
-      $records = array(
-        array(
-          "id" =>1,
-          "status" => "SY",
-          "affiliation" =>"faculty",
-          "title" => "MSc",
-          "o" => "The Universe",
-          "ou" => "Earth",
-          "co_id" =>1,
-          "valid_from" =>null,
-          "valid_through" => null,
-          "created" => "1999-12-11 11:23:45",
-          "modified" => "1999-12-11 11:23:45",
-          "org_identity_id" => null,
-          "revision" => 0,
-          "deleted" => 0,
-          "actor_identifier" => null
-        ),
-        array(
-          "id" =>2,
-          "status" => "SY",
-          "affiliation" =>"faculty",
-          "title" => "MSc+special=",
-          "o" => "The Universe\\with\\slash",
-          "ou" => "Ma+rs",
-          "co_id" =>1,
-          "valid_from" =>null,
-          "valid_through" => null,
-          "created" => "1999-12-11 11:23:45",
-          "modified" => "1999-12-11 11:23:45",
-          "org_identity_id" => null,
-          "revision" => 0,
-          "deleted" => 0,
-          "actor_identifier" => null
-        ),
-      );
+      $records = array();
 
       $this->records = $records;
 

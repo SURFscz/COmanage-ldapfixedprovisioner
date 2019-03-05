@@ -132,6 +132,20 @@ class CogroupmemberFixture extends CakeTestFixture {
             "deleted" => 0,
             "actor_identifier" => null
         ),
+        array(
+            "id" => 8,
+            "co_group_id" => 104,
+            "co_person_id" =>9,
+            "member" => 1,
+            "owner" => 0,
+            "source_org_identity_id" => null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "co_group_member_id" => null,
+            "revision" => 0,
+            "deleted" => 0,
+            "actor_identifier" => null
+        ),
       );
 
       $this->records = $records;

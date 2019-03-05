@@ -87,7 +87,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    * @return String CO DN within the ou=Groups,o=<CO name>,<baseDN> tree
    */
   public function coDn($codata) {
-    return "cn=".$this->prefix('co').$codata['Co']['name'].",".$this->groupdn;
+    return "cn=".$this->CoLdapFixedProvisionerDn->escape_dn($this->prefix('co').$codata['Co']['name']).",".$this->groupdn;
   }
 
   /**
@@ -411,6 +411,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                   $attribute[$attr][] = $m[ $cols[$attr] ] . " " . $m['description'];
                 } 
                 else {
+                  $this->dev_log("setting attr $attr to ".$m[$cols[$attr]]);
                   $attribute[$attr][] = $m[ $cols[$attr] ] . $scope;
                 }
                 $found = true;
@@ -637,7 +638,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'group',false);
                 //$this->dev_log('dn returns '.json_encode($dn));
                 if(!empty($dn['newdn'])) {
-                  $attribute[$attr][] = $dn['newdn'];
+                  $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
                 }
 
                 if(  isset($gm['CoGroup']['cou_id'])
@@ -654,7 +655,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                     //$this->dev_log('calling obtainDn with '.json_encode($dt));
                     $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'cou',false);
                     if(!empty($dn['newdn'])) {
-                      $attribute[$attr][] = $dn['newdn'];
+                      $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
                     }
                   }
                 }
@@ -676,13 +677,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               $this->dev_log('dn returns '.json_encode($dn));
               if(!empty($dn['newdn']))
               {
-                $attribute[$attr][] = $dn['newdn'];
+                $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
               }
             }
           }
           else {
             // a member of the CO top group
-            $attribute[$attr][]=$this->coDn($provisioningData);
+            $attribute[$attr][]=$this->CoLdapFixedProvisionerDn->unescape_full_dn($this->coDn($provisioningData));
           }
         }
         else if($cou) {
@@ -699,13 +700,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               $this->dev_log('dn returns '.json_encode($dn));
               if(!empty($dn['newdn']))
               {
-                $attribute[$attr][] = $dn['newdn'];
+                $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
               }
             }
           }
           else {
             // a member of the CO top group
-            $attribute[$attr][]=$this->coDn($provisioningData);
+            $attribute[$attr][]=$this->CoLdapFixedProvisionerDn->unescape_full_dn($this->coDn($provisioningData));
           }
         }
         break;
@@ -809,6 +810,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         throw new InternalErrorException("Unknown attribute: " . $attr);
         break;
     }
+    $this->dev_log("attribute is ".json_encode($attribute));
     return $attribute;
   }
 
@@ -909,7 +911,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
         foreach ($attributes[$a] as $v) {
           // Clean up the attribute before checking
-          $tv = str_replace("\r\n", "$", trim($v));
+          $tv = str_replace("\r\n", "$", $v);
 
           if (!isset($h[ strtolower($tv) ])) {
             $newa[] = $tv;
@@ -1339,8 +1341,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     if(!Configure::read('fixedldap')) Configure::load('ldapfixedprovisioner');
     $basedn=Configure::read('fixedldap.basedn');
     $schemata=Configure::read('fixedldap.schemata');
-    $this->peopledn = "ou=People,o=" . $provisioningData['Co']['name'].",".$basedn;
-    $this->groupdn="ou=Groups,o=" . $provisioningData['Co']['name'].",".$basedn;
+    $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($provisioningData['Co']['name']) .",".$basedn;
+    $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($provisioningData['Co']['name']) .",".$basedn;
     
     // 'cache' data on this provisioning object, so we don't have to pass it around to
     // all methods
@@ -2222,8 +2224,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function verifyLdapServer($url, $binddn, $password, $basedn, $co)
   {
-    $this->peopledn = "ou=People,o=" . $co.",".$basedn;
-    $this->groupdn="ou=Groups,o=" . $co.",".$basedn;
+    $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
+    $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $co);
 
     $results = $this->queryLdap($url, $binddn, $password, $this->peopledn, "(objectclass=*)", array("dn"));
@@ -2250,7 +2252,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   private function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
   {
-    $dn = "o=$coData,$basedn";
+    $dn = "o=".$this->CoLdapFixedProvisionerDn->escape_dn($coData).",$basedn";
     $retval=array("","");
 
     if (!$this->connectLdap($url, $binddn, $password)) {
@@ -2743,8 +2745,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
     if($isMemberOfEnabled) {
       $this->dev_log("IsMemberOf is enabled, replacing group DN");
-      $oldattrs=array("IsMemberOf"=>$olddn);
-      $newattrs=array("IsMemberOf"=>$newdn);
+      $oldattrs=array("IsMemberOf"=>$this->CoLdapFixedProvisionerDn->unescape_full_dn($olddn));
+      $newattrs=array("IsMemberOf"=>$this->CoLdapFixedProvisionerDn->unescape_full_dn($newdn));
 
       $args = array();
       $args['conditions']['CoGroupMember.co_group_id'] = $group['CoGroup']['id'];

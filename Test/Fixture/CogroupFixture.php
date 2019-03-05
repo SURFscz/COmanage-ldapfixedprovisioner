@@ -85,6 +85,23 @@ class CogroupFixture extends CakeTestFixture {
             "deleted" => 0,
             "actor_identifier" => null
         ),
+        array(
+            "id" => 104,
+            "co_id" => 3,
+            "cou_id" => null,
+            "name" => "Group+with+special,chars==",
+            "description" => "COmanage Members",
+            "open" => 0,
+            "status" => "A",
+            "group_type" => "M",
+            "auto" => 1,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "co_group_id" => null,
+            "revision" => 0,
+            "deleted" => 0,
+            "actor_identifier" => null
+        ),
       );
 
       $this->records = $records;

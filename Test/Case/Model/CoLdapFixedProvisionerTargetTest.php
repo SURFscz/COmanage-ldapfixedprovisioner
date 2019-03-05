@@ -53,6 +53,10 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
   "plugin.ldapFixedProvisioner.authenticator",
   "plugin.ldapFixedProvisioner.codepartment",
   "plugin.ldapFixedProvisioner.coemaillist",
+  "plugin.ldapFixedProvisioner.codashboard",
+  "plugin.ldapFixedProvisioner.comessagetemplate",
+  "plugin.ldapFixedProvisioner.conavigationlink",
+  "plugin.ldapFixedProvisioner.server",
   );
 
   public $CEPT;
@@ -336,20 +340,43 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
             ProvisioningActionEnum::CoPersonReprovisionRequested, ProvisioningActionEnum::CoPersonUnexpired,
             ProvisioningActionEnum::CoPersonUpdated);
 
+    // PA content:
+    //  [["ldap_is_connected",[]],
+    //  ["ldap_is_connected",[]],
+    //  ["ldap_add",["o=CO 1,dc=example,dc=com",{"o":"CO 1","objectClass":"organization"}]],
+    //  ["ldap_add",["ou=People,o=CO 1,dc=example,dc=com",{"ou":"People","objectClass":"organizationalUnit"}]],
+    //  ["ldap_add",["ou=Groups,o=CO 1,dc=example,dc=com",{"ou":"Groups","objectClass":["organizationalUnit"]}]],
+    //  ["ldap_rename",["eppn=test@example.com,ou=People,ou=CO 1,dc=example,dc=com","eppn=test@example.com"]],
+    //  ["ldap_mod_replace",["eppn=test@example.com,ou=People,o=CO 1,dc=example,dc=com",
+    //  {"sn":["name"],"cn":["such name ever"],"userPassword":[],"title":["Secretary"],"ou":["Sales"],"telephoneNumber":[],
+    //   "facsimileTelephoneNumber":[],"street":[],"l":[],"st":[],"postalCode":[],"givenName":"such","displayName":[],
+    //   "o":["Antartica Mining Corp"],"mail":["nosuchmail@example.com"],"mobile":[],"employeeNumber":"test@example.com",
+    //   "employeeType":["CO:CO 1:staff"],"roomNumber":"101","uid":[],"eduPersonAffiliation":[],"eduPersonEntitlement":[],
+    //   "eduPersonNickname":["such name ever"],"eduPersonOrcid":[],"eduPersonPrincipalName":"example@example.com",
+    //   "eduPersonPrincipalNamePrior":["example@example.com"],"eduPersonScopedAffiliation":[],"eduPersonUniqueId":[],
+    //   "isMemberOf":["cn=GRP:CO:admins,ou=Groups,o=CO 1,dc=example,dc=com",
+    //   "cn=GRP:CO:members:active,ou=Groups,o=CO 1,dc=example,dc=com","cn=GRP:CO:members,ou=Groups,o=CO 1,dc=example,dc=com"],
+    //   "hasMember":[],"voPersonApplicationUID":[],"voPersonAuthorName":[],"voPersonCertificateDN":[],
+    //   "voPersonCertificateIssuerDN":[],"voPersonExternalID":[],"voPersonID":[],"voPersonPolicyAgreement":[],
+    //   "voPersonSoRID":[],"voPersonStatus":["Active"],"description":[],"uidNumber":[],"gidNumber":[],"homeDirectory":[],
+    //   "loginShell":[],"gecos":[],"sshPublicKey":[],"eppn":[],"objectclass":["person","organizationalPerson","inetOrgPerson",
+    //   "eduPerson","eduMember","voPerson"]}]],
+    // ["ldap_unbind",[]]]
+
     $expectedPerson1hashes=array(
       ProvisioningActionEnum::CoGroupAdded => "97d170e1550eee4afc0af065b78cda302a97674c", // no op
       ProvisioningActionEnum::CoGroupDeleted => "97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoGroupReprovisionRequested => "97d170e1550eee4afc0af065b78cda302a97674c",
       ProvisioningActionEnum::CoGroupUpdated =>"97d170e1550eee4afc0af065b78cda302a97674c",
-      ProvisioningActionEnum::CoPersonAdded =>"b5b4aa08ed4dd4d640b115c28a75c3be3036f478", // delete
+      ProvisioningActionEnum::CoPersonAdded =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a", // delete
       ProvisioningActionEnum::CoPersonDeleted =>"98b3d6a1d363f5b272388c489f9e850424f9922a", // delete
-      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642", // replace
-      ProvisioningActionEnum::CoPersonExpired =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
-      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
-      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
-      ProvisioningActionEnum::CoPersonReprovisionRequested =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
-      ProvisioningActionEnum::CoPersonUnexpired =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642",
-      ProvisioningActionEnum::CoPersonUpdated =>"6ab68f58aaeec703dd9e7153410c8c6b7f39f642"
+      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a", // replace
+      ProvisioningActionEnum::CoPersonExpired =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a",
+      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a",
+      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a",
+      ProvisioningActionEnum::CoPersonReprovisionRequested =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a",
+      ProvisioningActionEnum::CoPersonUnexpired =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a",
+      ProvisioningActionEnum::CoPersonUpdated =>"f21a5fa2ec33cabc5e37514f66ec83b16c213c3a"
     );
     // these arguments come from the ProvisionerBehavior::marshallCoPersonData
     $args=array();
@@ -381,10 +408,10 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     foreach($statuses as $op)
     {
       LdapServiceBehavior::$content=array();
-      //print "person1 data is ".json_encode($person1)."<br/>";
+      //print "person1 data is ".json_encode($person1)."<br/><br/>";
       $this->CLPT->provision($target, $op, $person1);
       $hash=sha1(json_encode(LdapServiceBehavior::$content));
-      //print "hash '$hash' for op '$op', content is ".nl2br(json_encode(LdapServiceBehavior::$content)). "<br>";
+      //print "hash '$hash' for op '$op', content is ".nl2br(json_encode(LdapServiceBehavior::$content)). "<br><br/>";
       $this->assertTextEquals($expectedPerson1hashes[$op],$hash,"Person 1: expected different hash for operation '$op'");
     }
 
@@ -418,22 +445,35 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     }}
 
     $expectedGroup3hashes=array(
-      ProvisioningActionEnum::CoGroupAdded => "4d4b6c080ec3e9466f7b8e4ce608f60b0fab8ceb", // delete, add
-      ProvisioningActionEnum::CoGroupDeleted => "59b8e492899697b82d39caf78fc9287a4cd25eea", // delete
-      ProvisioningActionEnum::CoGroupReprovisionRequested => "a19668fda16e01b66936386ed8c774e59d1e9629", // del+add
-      ProvisioningActionEnum::CoGroupUpdated =>"95b169df5d662914acb913337a8659587df9e4ae", // replace
-      ProvisioningActionEnum::CoPersonAdded =>"762df188f4f1f0444797b95b6347f106a76c91c1", // delete
+      ProvisioningActionEnum::CoGroupAdded => "947257af7c1842c1a62def2d917f202cff16091b", // delete, add
+      ProvisioningActionEnum::CoGroupDeleted => "81c398d3cd4d2d4d894587a5160476bb29a04859", // delete
+      ProvisioningActionEnum::CoGroupReprovisionRequested => "b42fd896c505a466edda01630516711a9d810e40", // del+add
+      ProvisioningActionEnum::CoGroupUpdated =>"8e25e8a2c1044e5c1271143586206257905c4c39", // replace
+      ProvisioningActionEnum::CoPersonAdded =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f", // delete
       ProvisioningActionEnum::CoPersonDeleted =>"98b3d6a1d363f5b272388c489f9e850424f9922a", // delete
-      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f", // replace
-      ProvisioningActionEnum::CoPersonExpired =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f", //
-      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
-      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
-      ProvisioningActionEnum::CoPersonReprovisionRequested =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
-      ProvisioningActionEnum::CoPersonUnexpired =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f",
-      ProvisioningActionEnum::CoPersonUpdated =>"42a5e56a54405d851e1cf08f4afd52ef8a497f9f"
+      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f", // replace
+      ProvisioningActionEnum::CoPersonExpired =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f", //
+      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f",
+      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f",
+      ProvisioningActionEnum::CoPersonReprovisionRequested =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f",
+      ProvisioningActionEnum::CoPersonUnexpired =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f",
+      ProvisioningActionEnum::CoPersonUpdated =>"ec97b3c650bee2f07cf4dc513cfd61805e38152f"
     );
     $group3base = $this->CG->find('first',array('conditions'=>array("CoGroup.id"=>103),'contain'=>array('CoGroupMember')));
     //print "Group data is ".json_encode($group3)."<br/>";
+    // expected result along the lines of:
+    // [["ldap_is_connected",[]],
+    //  ["ldap_is_connected",[]],
+    //  ["ldap_add",["o=CO 1,dc=example,dc=com",{"o":"CO 1","objectClass":"organization"}]],
+    //  ["ldap_add",["ou=People,o=CO 1,dc=example,dc=com",{"ou":"People","objectClass":"organizationalUnit"}]],
+    //  ["ldap_add",["ou=Groups,o=CO 1,dc=example,dc=com",{"ou":"Groups","objectClass":["organizationalUnit"]}]],
+    //  ["ldap_rename",["cn=CO:members,ou=Groups,ou=CO 1,dc=example,dc=com","cn=GRP:CO:members,ou=Groups,o=CO 1"]],
+    //  ["ldap_add",["cn=GRP:CO:members,ou=Groups,o=CO 1,dc=example,dc=com",
+    //   {"cn":["GRP:CO:members"],"member":["eppn=test3@example.com,ou=People,ou=CO 1,dc=example,dc=com"],
+    //    "description":"COmanage Members","isMemberOf":["cn=CO:CO 1,ou=Groups,o=CO 1,dc=example,dc=com"],
+    //    "hasMember":["eppn=test3@example.com,ou=People,ou=CO 1,dc=example,dc=com"],
+    //    "objectclass":["groupOfNames","eduMember"]}]],
+    // ["ldap_unbind",[]]]
     foreach($statuses as $op)
     {
       $group3=$group3base;
@@ -463,6 +503,119 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->expectException("RuntimeException","Not Implemented");
     $this->CLPT->provision($target, "NO SUCH OP", $person1);
   }
+
+  public function testDnEscapes()
+  {
+    $tests=array(
+      "nochanges" => "nochanges",
+      "comm,a" => "comm\\2ca",
+      "equ=al" => "equ\\3dal",
+      "pl+us" => "pl\\2bus",
+      "qu\"ote"=> "qu\\22ote",
+      "brak<" => "brak\\3c",
+      ">ket" => "\\3eket",
+      "sl\\ash" => "sl\\5cash",
+      "  space in front" => "\\20 space in front",
+      "space at end  " => "space at end \\20",
+      "  and, a,comb=i<nat>on\" of+chars  " => "\\20 and\\2c a\\2ccomb\\3di\\3cnat\\3eon\\22 of\\2bchars \\20"
+    );
+    
+    foreach($tests as $test=>$result) 
+    {
+      $res = $this->CLPT->CoLdapFixedProvisionerDn->escape_dn($test);
+      $this->assertTextEquals($result,$res,"Escaping '".$test."' yields '".$res."' instead of expected '".$result."'");
+    }
+    foreach($tests as $test=>$result) 
+    {
+      $res = $this->CLPT->CoLdapFixedProvisionerDn->unescape_dn($result);
+      $this->assertTextEquals($test,$res,"Unescaping '".$result."' yields '".$res."' instead of expected '".$test."'");
+    }
+  }
+
+  public function testProvisionWithEscapes() {
+    $target = $this->CLPT->find('first',array("conditions"=>array("CoLdapFixedProvisionerTarget.id"=>1)));
+    LdapServiceBehavior::$content=array();
+    LdapServiceBehavior::$expected=TRUE;
+
+    $statuses = array(ProvisioningActionEnum::CoGroupAdded, ProvisioningActionEnum::CoGroupDeleted,
+            ProvisioningActionEnum::CoGroupReprovisionRequested, ProvisioningActionEnum::CoGroupUpdated,
+            ProvisioningActionEnum::CoPersonAdded, ProvisioningActionEnum::CoPersonDeleted,
+            ProvisioningActionEnum::CoPersonEnteredGracePeriod, ProvisioningActionEnum::CoPersonExpired,
+            ProvisioningActionEnum::CoPersonPetitionProvisioned,
+            ProvisioningActionEnum::CoPersonPipelineProvisioned,
+            ProvisioningActionEnum::CoPersonReprovisionRequested, ProvisioningActionEnum::CoPersonUnexpired,
+            ProvisioningActionEnum::CoPersonUpdated);
+
+    // Expected content along the lines of:
+    // [["ldap_is_connected",[]],
+    //  ["ldap_is_connected",[]],
+    //  ["ldap_add",["o=CO with\\2cspecial\\3dcharacters\\2b \\20,dc=example,dc=com",
+    //    {"o":"CO with,special=characters+ ","objectClass":"organization"}]],
+    //  ["ldap_add",["ou=People,o=CO with\\2cspecial\\3dcharacters\\2b \\20,dc=example,dc=com",
+    //    {"ou":"People","objectClass":"organizationalUnit"}]],
+    //  ["ldap_add",["ou=Groups,o=CO with\\2cspecial\\3dcharacters\\2b \\20,dc=example,dc=com",
+    //    {"ou":"Groups","objectClass":["organizationalUnit"]}]],
+    //  ["ldap_mod_replace",[
+    //    "eppn=eppn\\2bwith\\2cspecial\\3cchars\\3e,ou=People,o=CO with\\2cspecial\\3dcharacters\\2b \\20,dc=example,dc=com",
+    //    {"sn":["."],"cn":[""],"userPassword":[],"title":["Secretary+special+char"],"ou":["Sales+department"],
+    //     "telephoneNumber":[],"facsimileTelephoneNumber":[],"street":[],"l":[],"st":[],"postalCode":[],
+    //     "givenName":".","displayName":[],"o":["Russian Mining Corp"],"mail":[],"mobile":[],
+    //     "employeeNumber":"eppn+with,special","employeeType":["CO:CO with,special=characters+ :staff"],
+    //     "roomNumber":[],"uid":[],"eduPersonAffiliation":[],"eduPersonEntitlement":[],"eduPersonNickname":[],
+    //     "eduPersonOrcid":[],"eduPersonPrincipalName":"another==eppn+with,special",
+    //     "eduPersonPrincipalNamePrior":["another==eppn+with,special"],"eduPersonScopedAffiliation":[],
+    //     "eduPersonUniqueId":[],
+    //     "isMemberOf":["cn=GRP:Group+with+special,chars==,ou=Groups,o=CO with,special=characters+ ,dc=example,dc=com"]
+    //     "hasMember":[],"voPersonApplicationUID":[],"voPersonAuthorName":[],"voPersonCertificateDN":[],
+    //     "voPersonCertificateIssuerDN":[],"voPersonExternalID":[],"voPersonID":[],"voPersonPolicyAgreement":[],
+    //     "voPersonSoRID":[],"voPersonStatus":["Approved"],"description":[],"uidNumber":[],
+    //     "gidNumber":[],"homeDirectory":[],"loginShell":[],"gecos":[],"sshPublicKey":[],"eppn":[],
+    //     "objectclass":["person","organizationalPerson","inetOrgPerson","eduPerson","eduMember","voPerson"]}]],
+    //  ["ldap_unbind",[]]]
+
+    $expectedPerson9hashes=array(
+      ProvisioningActionEnum::CoGroupAdded => "97d170e1550eee4afc0af065b78cda302a97674c", // no-op
+      ProvisioningActionEnum::CoGroupDeleted => "97d170e1550eee4afc0af065b78cda302a97674c",
+      ProvisioningActionEnum::CoGroupReprovisionRequested => "97d170e1550eee4afc0af065b78cda302a97674c",
+      ProvisioningActionEnum::CoGroupUpdated =>"97d170e1550eee4afc0af065b78cda302a97674c",
+      ProvisioningActionEnum::CoPersonAdded =>"5097d60cf0659b4c39eab7a09fccc35771e88d2b",
+      ProvisioningActionEnum::CoPersonDeleted =>"424c11594be48da31d6a1fb47d9278a6c84b9500",
+      ProvisioningActionEnum::CoPersonEnteredGracePeriod =>"424c11594be48da31d6a1fb47d9278a6c84b9500",
+      ProvisioningActionEnum::CoPersonExpired =>"424c11594be48da31d6a1fb47d9278a6c84b9500",
+      ProvisioningActionEnum::CoPersonPetitionProvisioned =>"5097d60cf0659b4c39eab7a09fccc35771e88d2b",
+      ProvisioningActionEnum::CoPersonPipelineProvisioned =>"5097d60cf0659b4c39eab7a09fccc35771e88d2b",
+      ProvisioningActionEnum::CoPersonReprovisionRequested =>"5097d60cf0659b4c39eab7a09fccc35771e88d2b",
+      ProvisioningActionEnum::CoPersonUnexpired =>"424c11594be48da31d6a1fb47d9278a6c84b9500",
+      ProvisioningActionEnum::CoPersonUpdated =>"424c11594be48da31d6a1fb47d9278a6c84b9500"
+    );
+    // these arguments come from the ProvisionerBehavior::marshallCoPersonData
+    $args=array();
+    $args['conditions']=array("CoPerson.id"=>9);
+    $args['contain'] = array(
+      'Co',
+      'CoGroupMember' => array('CoGroup'),
+      'CoOrgIdentityLink' => array('OrgIdentity' => array('Identifier')),
+      'CoPersonRole' => array('Address', 'Cou', 'TelephoneNumber'),
+      'EmailAddress',
+      'Identifier',
+      'Name',
+      'PrimaryName' => array('conditions' => array('PrimaryName.primary_name' => true)),
+      'SshKey'
+    );
+    $person9 = $this->CP->find('first',$args);
+    print "person record is <br>".nl2br(json_encode($person9))."<br/>";
+
+    foreach($statuses as $op)
+    {
+      LdapServiceBehavior::$content=array();
+      //print "person1 data is ".json_encode($person9)."<br/><br/>";
+      $this->CLPT->provision($target, $op, $person9);
+      $hash=sha1(json_encode(LdapServiceBehavior::$content));
+      //print "hash '$hash' for op '$op', content is ".nl2br(json_encode(LdapServiceBehavior::$content)). "<br><br/>";
+      $this->assertTextEquals($expectedPerson9hashes[$op],$hash,"Person 9: expected different hash for operation '$op'");
+    }
+  }
+
 
 }
 

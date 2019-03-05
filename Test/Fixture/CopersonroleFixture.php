@@ -53,6 +53,26 @@ class CopersonroleFixture extends CakeTestFixture {
             "deleted" => "0",
             "actor_identifier" => null
         ),
+        array(
+            "id" => 2,
+            "co_person_id" => 9,
+            "sponsor_co_person_id" => null,
+            "cou_id" => null,
+            "affiliation" => "staff",
+            "title" => "Secretary+special+char",
+            "o" => "Russian Mining Corp",
+            "ou" => "Sales+department",
+            "valid_from" =>null,
+            "valid_through" => null,
+            "status" => 1,
+            "source_org_identity_id" => null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "co_person_role_id" => null,
+            "revision" => "0",
+            "deleted" => "0",
+            "actor_identifier" => null
+        ),
       );
 
       $this->records = $records;

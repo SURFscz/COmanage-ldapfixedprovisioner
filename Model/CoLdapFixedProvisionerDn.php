@@ -101,7 +101,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "o=" . $coData['Co']['name'] . ",".$basedn;
+    $dn = "o=" . $this->escape_dn($coData['Co']['name']) . ",".$basedn;
 
     return $dn;
   }
@@ -130,7 +130,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "cn=" . $this->CoLdapFixedProvisionerTarget->prefix('cou').$couData['Cou']['name'] . ",ou=Groups,".$basedn['newdn'];
+    $dn = "cn=" . $this->escape_dn($this->CoLdapFixedProvisionerTarget->prefix('cou').$couData['Cou']['name']) . ",ou=Groups,".$basedn['newdn'];
 
     return $dn;
   }
@@ -159,7 +159,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
     }
 
-    $dn = "cn=" . $this->CoLdapFixedProvisionerTarget->prefix('group'). $coGroupData['CoGroup']['name']. ",ou=Groups,".$basedn['newdn'];
+    $dn = "cn=" . $this->escape_dn($this->CoLdapFixedProvisionerTarget->prefix('group'). $coGroupData['CoGroup']['name']) . ",ou=Groups,".$basedn['newdn'];
     return $dn;
   }
 
@@ -229,7 +229,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       // if multiple active identifiers of a given type are found. (We don't actually
       // need to check for Status=Active since ProvisionerBehavior will filter out
       // non-Active status.)
-      $dn = $dn_attribute_name . "=" . $uid. ",ou=People," . $basedn['newdn'];
+      $dn = $dn_attribute_name . "=" . $this->escape_dn($uid) . ",ou=People," . $basedn['newdn'];
     }
 
     if($dn == "") {
@@ -263,7 +263,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
     foreach($attrs as $a) {
       $av = explode("=", $a, 2);
 
-      $ret[ $av[0] ] = $av[1];
+      $ret[ $av[0] ] = $this->unescape_dn($av[1]);
     }
 
     return $ret;
@@ -419,7 +419,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
    */
 
   private function mapCoGroupMembersToDns($coGroupMembers, $owners=false, $stripuid=false) {
-    // Walk through the members and pull the CO Person IDs
+    // Walk through the members and pull the COPerson IDs
     $coPeopleIds = array();
 
     foreach($coGroupMembers as $m) {
@@ -438,6 +438,9 @@ class CoLdapFixedProvisionerDn extends AppModel {
       $args['fields'] = array('CoLdapFixedProvisionerDn.co_person_id', 'CoLdapFixedProvisionerDn.dn');
 
       $retval = array_values($this->find('list', $args));
+      array_walk($retval, function(&$item, $key) {
+        $item = $this->unescape_full_dn($item);
+      });
       if($stripuid) {
         $basedn = Configure::read('fixedldap.basedn');        
         array_walk($retval, function(&$item, $key, $basedn) {
@@ -564,5 +567,70 @@ class CoLdapFixedProvisionerDn extends AppModel {
                  'newdnerr' => $newDnErr);
     }
     return $this->_cache[$subarray]["key_".$object_id];                
+  }
+
+  /**
+   * Escape specific characters in the DN
+   *
+   * @param  String DN attribute value
+   * @return String escaped attribute value
+   *
+   * According to https://rlmueller.net/CharactersEscaped.htm
+   * certain characters need to be escaped in a DN:
+   * , \ # + < > ; " = and leading-or-trailing-space
+   * Also, forward slash needs to be escaped sometimes (ADSI)
+   */
+  public function escape_dn($dn) {
+    //CakeLog::write('debug','escaping dn "'.$dn.'"');
+    $dn = ldap_escape($dn,null, LDAP_ESCAPE_DN);
+
+    // ldap_escape does not escape the spaces at start and end though...
+    // the post at
+    // https://stackoverflow.com/questions/8560874/php-ldap-add-function-to-escape-ldap-special-characters-in-dn-syntax
+    // indicates it would however...
+    if(substr($dn,-1) == ' ') {
+      $dn=substr($dn,0,-1).'\20';
+    }
+    if($dn[0] == ' ') {
+      $dn='\20'.substr($dn,1);
+    }
+    //CakeLog::write('debug','returning escaped dn "'.$dn.'"');
+    return $dn;
+  }
+
+  /**
+   * Unescape DN characters....
+   * this function is required, because we first create a DN, and then
+   * we try to see if the required attributes of this DN are actually
+   * present. If not, we add them. But then we need to de-escape the value
+   * to properly test attribute value and DN part
+      *
+   * @param  String DN attribute value
+   * @return String escaped attribute value
+   */
+  public function unescape_dn($dn) {
+    //CakeLog::write('debug','unescaping "'.$dn.'"');
+    $dn = str_replace(
+      array('\20','\3d','\2b','\2c','\\22','\3c','\3e'),
+      array(' ','=','+',',','"','<','>'),
+      $dn);
+    $dn = str_replace('\5c','\\',$dn);
+    //CakeLog::write('debug','returning unescaped "'.$dn.'"');
+    return $dn;
+  }
+
+  // convenience function to unescape a full DN, need to get back group names
+  public function unescape_full_dn($dn) {
+    CakeLog::write('debug','unescaping '.$dn);
+    $attrs = explode(",", $dn);
+    $newattrs=array();
+    foreach($attrs as $a) {
+      $av = explode("=", $a, 2);
+      $a = $av[0]."=". $this->unescape_dn($av[1]);
+      $newattrs[]=$a;
+    }
+    $dn = implode(",",$newattrs);
+    CakeLog::write('debug','returning unescaped '.$dn);
+    return $dn;
   }
 }

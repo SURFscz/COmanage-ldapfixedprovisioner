@@ -44,6 +44,17 @@ class CoorgidentitylinkFixture extends CakeTestFixture {
             "deleted" => 0,
             "actor_identifier" => null
         ),
+        array(
+            "id" => 2,
+            "co_person_id" => 9,
+            "org_identity_id" => 2,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "co_org_identity_link_id" => null,
+            "revision" => 0,
+            "deleted" => 0,
+            "actor_identifier" => null
+        ),
       );
 
       $this->records = $records;

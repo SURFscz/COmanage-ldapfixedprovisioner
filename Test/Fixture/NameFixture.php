@@ -114,6 +114,26 @@ class NameFixture extends CakeTestFixture {
             "deleted" => "0",
             "actor_identifier" => null
         ),
+        array(
+            "id" => 5,
+            "honorific" => "Dr+",
+            "given" => "Special==",
+            "middle" => "Chars<>",
+            "family" => "Names\",s",
+            "suffix" => "with=special+s",
+            "type" => "",
+            "language" => null,
+            "co_person_id" =>9,
+            "org_identity_id" => null,
+            "primary_name" => 0,
+            "source_name_id" => null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "name_id" => null,
+            "revision" => "0",
+            "deleted" => "0",
+            "actor_identifier" => null
+        ),
       );
 
       $this->records = $records;

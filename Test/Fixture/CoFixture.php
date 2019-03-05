@@ -50,6 +50,14 @@ class CoFixture extends CakeTestFixture {
             "created" => "1999-12-11 11:23:45",
             "modified" => "1999-12-11 11:23:45",
         ),
+        array(
+            "id" => 3,
+            "name" => "CO with,special=characters+  ",
+            "description" => "Third test CO",
+            "status" => null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+        ),
       );
 
       $this->records = $records;

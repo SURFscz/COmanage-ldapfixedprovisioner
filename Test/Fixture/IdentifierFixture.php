@@ -160,6 +160,34 @@ class IdentifierFixture extends CakeTestFixture {
             "identifier_id" => null,
             "revision" => "0"
         ),
+        array(
+            "id" => 10,
+            "identifier" => "eppn+with,special<chars>",
+            "type" => "eppn",
+            "login" => "1",
+            "status" => "A",
+            "co_person_id" => 9,
+            "org_identity_id" =>null,
+            "source_identifier_id" => null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "identifier_id" => null,
+            "revision" => "0"
+        ),
+        array(
+            "id" => 11,
+            "identifier" => "another==eppn+with,special<chars>",
+            "type" => "eppn",
+            "login" => "1",
+            "status" => "A",
+            "co_person_id" => null,
+            "org_identity_id" =>2,
+            "source_identifier_id" => null,
+            "created" => "1999-12-11 11:23:45",
+            "modified" => "1999-12-11 11:23:45",
+            "identifier_id" => null,
+            "revision" => "0"
+        ),
       );
 
       $this->records = $records;
