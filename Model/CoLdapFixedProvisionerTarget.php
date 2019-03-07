@@ -638,7 +638,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                 $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'group',false);
                 //$this->dev_log('dn returns '.json_encode($dn));
                 if(!empty($dn['newdn'])) {
-                  $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
+                  $attribute[$attr][] = $dn['newdn'];
                 }
 
                 if(  isset($gm['CoGroup']['cou_id'])
@@ -655,7 +655,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
                     //$this->dev_log('calling obtainDn with '.json_encode($dt));
                     $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'cou',false);
                     if(!empty($dn['newdn'])) {
-                      $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
+                      $attribute[$attr][] = $dn['newdn'];
                     }
                   }
                 }
@@ -677,13 +677,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               $this->dev_log('dn returns '.json_encode($dn));
               if(!empty($dn['newdn']))
               {
-                $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
+                $attribute[$attr][] = $dn['newdn'];
               }
             }
           }
           else {
             // a member of the CO top group
-            $attribute[$attr][]=$this->CoLdapFixedProvisionerDn->unescape_full_dn($this->coDn($provisioningData));
+            $attribute[$attr][]=$this->coDn($provisioningData);
           }
         }
         else if($cou) {
@@ -700,13 +700,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               $this->dev_log('dn returns '.json_encode($dn));
               if(!empty($dn['newdn']))
               {
-                $attribute[$attr][] = $this->CoLdapFixedProvisionerDn->unescape_full_dn($dn['newdn']);
+                $attribute[$attr][] = $dn['newdn'];
               }
             }
           }
           else {
             // a member of the CO top group
-            $attribute[$attr][]=$this->CoLdapFixedProvisionerDn->unescape_full_dn($this->coDn($provisioningData));
+            $attribute[$attr][]=$this->coDn($provisioningData);
           }
         }
         break;
@@ -2745,8 +2745,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
     if($isMemberOfEnabled) {
       $this->dev_log("IsMemberOf is enabled, replacing group DN");
-      $oldattrs=array("IsMemberOf"=>$this->CoLdapFixedProvisionerDn->unescape_full_dn($olddn));
-      $newattrs=array("IsMemberOf"=>$this->CoLdapFixedProvisionerDn->unescape_full_dn($newdn));
+      $oldattrs=array("IsMemberOf"=>$olddn);
+      $newattrs=array("IsMemberOf"=>$newdn);
 
       $args = array();
       $args['conditions']['CoGroupMember.co_group_id'] = $group['CoGroup']['id'];

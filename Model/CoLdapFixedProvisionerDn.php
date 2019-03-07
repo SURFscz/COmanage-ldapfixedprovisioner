@@ -437,13 +437,11 @@ class CoLdapFixedProvisionerDn extends AppModel {
       $args['conditions']['CoLdapFixedProvisionerDn.co_person_id'] = $coPeopleIds;
       $args['fields'] = array('CoLdapFixedProvisionerDn.co_person_id', 'CoLdapFixedProvisionerDn.dn');
 
-      $retval = array_values($this->find('list', $args));
-      array_walk($retval, function(&$item, $key) {
-        $item = $this->unescape_full_dn($item);
-      });
       if($stripuid) {
         $basedn = Configure::read('fixedldap.basedn');        
         array_walk($retval, function(&$item, $key, $basedn) {
+          // first unescape the full DN, so we can match the baseDN part (which is unescaped)
+          $item = $this->unescape_full_dn($item);
           $item = $this->stripDN($item,$basedn,false);
         }, $basedn);
       }
