@@ -437,6 +437,7 @@ class CoLdapFixedProvisionerDn extends AppModel {
       $args['conditions']['CoLdapFixedProvisionerDn.co_person_id'] = $coPeopleIds;
       $args['fields'] = array('CoLdapFixedProvisionerDn.co_person_id', 'CoLdapFixedProvisionerDn.dn');
 
+      $retval = array_values($this->find('list', $args));
       if($stripuid) {
         $basedn = Configure::read('fixedldap.basedn');        
         array_walk($retval, function(&$item, $key, $basedn) {
