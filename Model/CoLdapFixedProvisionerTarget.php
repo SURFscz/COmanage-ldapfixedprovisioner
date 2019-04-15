@@ -120,7 +120,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    * @param  Array   $provisioningData         object data to generate attribute for
    * @return Array   $attribute                hash of one or more attribute settings (key=>list)
    */
-  private function generateAttribute($attr, $config, $provisioningData) {
+  private function generateAttribute($attr, $config, $provisioningData, $modelType) {
     $attribute=array();
 
     // Does this attribute support multiple values?
@@ -133,11 +133,11 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // Labeled attribute, used to construct attribute options
     $lattr = $attr;
     
-    $group = isset($provisioningData['CoGroup']);
-    $person = isset($provisioningData['CoPerson']) && !$group;
-    $cou = isset($provisioningData['Cou']);
-    $co = isset($provisioningData['Co']) && !($person || $group || $cou);
-    $this->dev_log('type is '.($group?"group":($person?"person":($cou?"cou":($co ? "co" : "unknown")))));
+    $group = $modelType == "CoGroup";
+    $person = $modelType == "CoPerson";
+    $cou = $modelType == "Cou";
+    $service = $modelType == "CoService";
+    $co = $modelType == "Co";
 
     $this->dev_log("looking for attribute $attr of type $targetType");
     switch ($attr) {
@@ -153,6 +153,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         } 
         else if($group) {
           $attribute[$lattr][] = $this->prefix('group').$provisioningData['CoGroup']['name'];
+          break;
+        }
+        else if($service) {
+          $attribute[$lattr][] = $provisioningData['CoService']['name'];
           break;
         }
         // else person, fall through
@@ -175,7 +179,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
           if(!empty($provisioningData['PrimaryName'][$f])) {
             $attribute[$lattr][] = $provisioningData['PrimaryName'][$f];
-          } else {
+          } else if($person) {
             $attribute[$lattr][] = ".";
           }
         }
@@ -207,12 +211,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       case 'ou':
       case 'title':
         // a COU always falls under the Groups organizationalUnit
-        if($cou || $co || $group) {
+        if($cou || $co || $group || $service) {
           switch($attr)  {
           case 'ou':
             if($group) $attribute[$attr]='group';
             if($cou) $attribute[$attr]='cou';
             if($co) $attribute[$attr]='co';
+            if($service) $attribute[$attr]='service';
             break;
           case 'o':
             $attribute[$attr]=$provisioningData['Co']['name'];
@@ -281,12 +286,35 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         break;
 
       // Attributes from models attached to CO Person
+      case 'labeledURI':
+        if($service) {
+          // emit the entitlement_uri
+          if(!empty($provisioningData['CoService']['entitlement_uri'])) {
+            $attribute[$attr][] = $provisioningData['CoService']['entitlement_uri'];
+          }
+        }
+        else if($co) {
+          // find all services attached to this CO and emit the entitlement_uri's
+          $args = array();
+          $args['conditions']['CoService.co_id'] = $id;
+          $args['contain'] = false;
+          $services = $this->CoLdapFixedProvisionerDn->CoService->find('all', $args);
+          foreach($services as $s) {
+            if(!empty($s['entitlement_uri'])) {
+              $attribute[$attr][] = $s['entitlement_uri'];
+            }
+          }
+        }
+
+        if (!$person) {
+          break;
+        }
+        // else FALL THROUGH
       case 'eduPersonOrcid':
       case 'eduPersonPrincipalName':
       case 'eduPersonPrincipalNamePrior':
       case 'eduPersonUniqueId':
       case 'employeeNumber':
-      case 'labeledURI':
       case 'mail':
       case 'uid':
       case 'voPersonApplicationUID':
@@ -468,7 +496,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           foreach($provisioningData['CoPersonRole'] as $r) {
             $lrattr = $lattr . ";role-" . $r['id'];
 
-            $attribute[$lrattr] = StatusENum::$to_api[ $r['status'] ];
+            $attribute[$lrattr] = StatusEnum::$to_api[ $r['status'] ];
           }
         }
         break;
@@ -609,6 +637,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         else if ($cou && !empty($provisioningData['Cou']['description'])) {
           $attribute[$attr] = $provisioningData['Cou']['description'];
         }
+        else if ($service && !empty($provisioningData['CoService']['description'])) {
+          $attribute[$attr] = $provisioningData['CoService']['description'];
+        }
         else if ($co && !empty($provisioningData['Co']['description'])) {
           $attribute[$attr] = $provisioningData['Co']['description'];
         }
@@ -675,8 +706,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               $this->dev_log('calling obtainDn with '.json_encode($dt));
               $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'cou',true);
               $this->dev_log('dn returns '.json_encode($dn));
-              if(!empty($dn['newdn']))
-              {
+              if(!empty($dn['newdn'])) {
                 $attribute[$attr][] = $dn['newdn'];
               }
             }
@@ -698,14 +728,28 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
               $this->dev_log('calling obtainDn with '.json_encode($dt));
               $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'cou',true);
               $this->dev_log('dn returns '.json_encode($dn));
-              if(!empty($dn['newdn']))
-              {
+              if(!empty($dn['newdn'])) {
                 $attribute[$attr][] = $dn['newdn'];
               }
             }
           }
           else {
             // a member of the CO top group
+            $attribute[$attr][]=$this->coDn($provisioningData);
+          }
+        }
+        else if ($service) {
+          // a service can be part of a CO/COU and have visibility for a specific group
+          $groupdn = $this->getGroupDn($provisioningData['CoService']['co_group_id'], $provisioningData);
+          if(!empty($groupdn)) {
+            $attribute[$attr][] = $groupdn;
+          }
+          $coudn = $this->getCouDn($provisioningData['CoService']['cou_id'], $provisioningData);
+          if(!empty($coudn)) {
+            $attribute[$attr][] = $coudn;
+          }
+          else {
+            // service is a member of the top-CO
             $attribute[$attr][]=$this->coDn($provisioningData);
           }
         }
@@ -717,6 +761,21 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         }
         else if($cou || $co) {
           $attribute[$attr] = $this->CoLdapFixedProvisionerDn->dnsForCous($this->targetData, $provisioningData, $groupMembers, FALSE);
+        }
+        else if ($service) {
+          // a service can be part of a COU and have visibility for a specific group
+          $groupdn = $this->getGroupDn($provisioningData['CoService']['co_group_id'], $provisioningData);
+          if(!empty($groupdn)) {
+            $attribute[$attr][] = $groupdn;
+          }
+          $coudn = $this->getCouDn($provisioningData['CoService']['cou_id'], $provisioningData);
+          if(!empty($coudn)) {
+            $attribute[$attr][] = $coudn;
+          }
+          else {
+            // service is a member of the top-CO
+            $attribute[$attr][]=$this->coDn($provisioningData);
+          }
         }
         if (empty($attribute[$attr])) {
           $this->dev_log('group has no members');
@@ -938,7 +997,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     
     // Check that all the required fields of the configured objectclasses are available
     // If not, remove the relevant objectclass    
-    $ocs=$attributes['objectclass'];
+    $ocs=isset($attributes['objectclass']) ? $attributes['objectclass'] : array();
     $newocs=array();
     $supported=$this->supportedAttributes();
     foreach($supported as $oc=>$cfg) {
@@ -973,7 +1032,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
     }
     $ocs=$newocs;
-    unset($attributes["objectclass"]);
+    if(isset($attributes['objectclass'])) unset($attributes["objectclass"]);
 
     // export only fields covered by one of the objectclasses we export
     // We copy the attribute values of those fields, and anything we leave
@@ -1049,8 +1108,17 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // First see if we're working with a Group record or a Person record
     // If person is set, we are dealing with a CoPerson related provisioning. For
     // strictly CoGroup related provisioning, person is always false
-    $person = isset($provisioningData['CoPerson']['id']);
-    $group = isset($provisioningData['CoGroup']['id']);
+    $group = isset($provisioningData['CoGroup']);
+    $person = isset($provisioningData['CoPerson']) && !$group;
+    $cou = isset($provisioningData['Cou']);
+    $service = isset($provisioningData['CoService']);
+    $co = isset($provisioningData['Co']) && !($person || $group || $cou || $service);
+    $modelname = $group ? "CoGroup" :
+      ($person ? "CoPerson":
+        $cou ? "Cou" : (
+          $service ? "CoService" : (
+            $co ? "Co" : "unknown" )));
+
 
     // Make it easier to see if attribute options are enabled
     $attropts = ($person && Configure::read('fixedldap.attr_opts'));
@@ -1072,7 +1140,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // Note we don't need to check for inactive status where relevant since
     // ProvisionerBehavior will remove those from the data we get.
     foreach (array_keys($supported) as $oc) {
-      //$this->dev_log("objectclass $oc");
+      $this->dev_log("objectclass $oc");
       // First see if this objectclass is handled by a plugin
       if (!empty($supported[$oc]['plugin'])) {
         // Ask the plugin to assemble the attributes for this objectclass for us.
@@ -1094,9 +1162,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
 
       // Skip objectclasses that aren't relevant for the sort of data we're working with
-      if (($person && in_array($oc, array('groupOfNames', 'posixGroup')))
-         || ($group && !in_array($oc, array('groupOfNames','eduMember','posixGroup')))) {
-        //$this->dev_log("skipping class ".$oc." because it is not relevant");
+      $this->dev_log('testing for '.$modelname.' in '.json_encode($supported[$oc]['objectclass']['models']));
+      if (!in_array($modelname, $supported[$oc]['objectclass']['models'])) {
+        $this->dev_log("skipping class ".$oc." for $modelname because it is not relevant");
         continue;
       }
 
@@ -1135,7 +1203,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             $cfg['scope']=$scope_suffix;
             $cfg['attropts']=$attropts;
 
-            $attribute = $this->generateAttribute($attr, $cfg, $provisioningData);
+            $attribute = $this->generateAttribute($attr, $cfg, $provisioningData, $modelname);
             //$this->dev_log('attribute '.json_encode($attribute).' generated using '.json_encode($cfg));
 
             // Make sure to 'clear out' unset attributes in case we do a 'modify'
@@ -1198,6 +1266,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function provision($coProvisioningTargetData, $op, $provisioningData)
   {
+    $this->dev_log("\r\n*********************************************");
+    $this->dev_log(json_encode($provisioningData));
+
     // First figure out what to do
     $assigndn = false;
     $delete   = false;
@@ -1209,17 +1280,50 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // determine if the operation is for a person or for a group
     $person   = false;
     $group    = false;
+    $emaillist= false;
+    $service  = false;
 
+    // because a group can include a person (in case of membership provisioning), but not
+    // the other way around, we set the default to person.
+    // If group is set, we set it to group anyway.
+    $person = true;
+    $modelname = "CoPerson";
+    $dntype="person";
+    if(isset($provisioningData["CoGroup"])) {
+      $person = false;
+      $modelname = "CoGroup";
+      $dntype = "group";
+      $group = true;
+    } else if(isset($provisioningData["CoEmailList"])) {
+      // not provisioned, but added here for sake of completeness
+      $emaillist = true;
+      $modelname = "CoEmailList";
+      $dntype = "emaillist";
+      $person = false;
+    } else if(isset($provisioningData["CoService"])) {
+      $service = true;
+      $modelname = "CoService";
+      $dntype = "service";
+      $person = false;
+    }
+
+    // determine the CO
     if(!isset($provisioningData['Co'])) {
-      $data = $this->CoProvisioningTarget->Co->find('first',array("conditions"=>array("Co.id"=>$provisioningData[$person ? "CoPerson": "CoGroup"]['co_id'])));
+      // all supported models are linked to CO directly
+      if(!isset($provisioningData[$modelname]['co_id'])) {
+        // unsupported model... act is if we succesfully provisioned this
+        $this->dev_log('premature escape because of missing co id');
+        $this->dev_log(json_encode($provisioningData[$modelname]));
+        return true;
+      }
+      $coid = $provisioningData[$modelname]['co_id'];
+      $data = $this->CoProvisioningTarget->Co->find('first',array("conditions"=>array("Co.id"=>$coid)));
       $provisioningData['Co'] = $data['Co'];
     }
 
-    $this->dev_log("\r\n*********************************************");
     $this->dev_log("provisioning $op for ".
-        (isset($provisioningData['CoPerson']) ? 
-            "person ".$provisioningData['CoPerson']['id'] : 
-            "group ".$provisioningData['CoGroup']['name']));
+        ($person ? "person ".$provisioningData['CoPerson']['id'] :
+         ("$modelname ".$provisioningData[$modelname]['name'])));
 
     switch ($op) {
     case ProvisioningActionEnum::CoPersonAdded:
@@ -1230,11 +1334,10 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
       $assigndn = true;
       $modify = true;
-      $person = true;
       break;
     case ProvisioningActionEnum::CoPersonDeleted:
       // this state should only apply to a person model
-      if(empty($provisioningData['CoPerson']['id'])) {
+      if(!$person) {
         $this->log('PersonDeleted operation without CoPerson data','debug');
         return true;
       }
@@ -1243,14 +1346,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // the DN. Instead, we manually delete it
       $deletedn = true;
       $delete = true;
-      $person = true;
       break;
     case ProvisioningActionEnum::CoPersonPetitionProvisioned:
     case ProvisioningActionEnum::CoPersonPipelineProvisioned:
     case ProvisioningActionEnum::CoPersonReprovisionRequested:
       // The Unexpired op can apply to group membership as well, but the CoPerson
       // information must be present
-      if(empty($provisioningData['CoPerson']['id'])) {
+      if(!$person) {
         $this->log('Person state-change (add) operation without CoPerson data','debug');
         return true;
       }
@@ -1258,7 +1360,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // attributes that we don't want to change. Treat them all as modifies.
       $assigndn = true;
       $modify = true;
-      $person = true;
       break;
     case ProvisioningActionEnum::CoPersonExpired:
     case ProvisioningActionEnum::CoPersonEnteredGracePeriod:
@@ -1266,7 +1367,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     case ProvisioningActionEnum::CoPersonUnexpired:
       // These ops can apply to group membership as well, in which case the relevant
       // CoPerson data is marshalled in
-      if(empty($provisioningData['CoPerson']['id'])) {
+      if(!$person) {
         $this->log('Person state-change (remove) operation without CoPerson data','debug');
         return true;
       }
@@ -1284,7 +1385,6 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         $assigndn = true;
         $modify = true;
       }
-      $person = true;
       break;
     case ProvisioningActionEnum::CoGroupAdded:
       // this state should only apply to a group model
@@ -1297,36 +1397,68 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       break;
     case ProvisioningActionEnum::CoGroupDeleted:
       // this state should only apply to a group model
-      if(empty($provisioningData['CoGroup']['id'])) {
+      if(!$group) {
         $this->log('GroupDeleted operation without CoGroup data','debug');
         return true;
       }
       $delete = true;
       $deletedn = true;
-      $group = true;
       break;
     case ProvisioningActionEnum::CoGroupUpdated:
       // this state is triggered when group members are added or removed
       // so this could apply to both person or group, but the group data
       // should be present
-      if(empty($provisioningData['CoGroup']['id'])) {
+      if(!$group) {
         $this->log('GroupUpdated operation without CoGroup data','debug');
         return true;
       }
       $assigndn = true;
       $modify = true;
-      $group = true;
       break;
     case ProvisioningActionEnum::CoGroupReprovisionRequested:
       // this state should only apply to a group model
-      if(empty($provisioningData['CoGroup']['id'])) {
+      if(!$group) {
         $this->log('GroupReprovision operation without CoGroup data','debug');
         return true;
       }
       $assigndn = true;
       $delete = true;
       $add = true;
-      $group = true;
+      break;
+    case ProvisioningActionEnum::CoServiceAdded:
+      // this state should only apply to a Service model
+      if(!$service) {
+        $this->log('ServiceAdded operation without CoService data','debug');
+        return true;
+      }
+      $assigndn = true;
+      $add = true;
+      break;
+    case ProvisioningActionEnum::CoServiceUpdated:
+      if(!$service) {
+        $this->log('ServiceAdded operation without CoService data','debug');
+        return true;
+      }
+      $this->dev_log("Provisioning services ".json_encode($provisioningData));
+      $assigndn = true;
+      $modify = true;
+      break;
+    case ProvisioningActionEnum::CoServiceDeleted:
+      if(!$service) {
+        $this->log('ServiceAdded operation without CoService data','debug');
+        return true;
+      }
+      $delete = true;
+      $deletedn = true;
+      break;
+    case ProvisioningActionEnum::CoServiceReprovisionRequested:
+      if(!$service) {
+        $this->log('ServiceAdded operation without CoService data','debug');
+        return true;
+      }
+      $assigndn = true;
+      $delete = true;
+      $add = true;
       break;
     case ProvisioningActionEnum::AuthenticatorUpdated:
     case ProvisioningActionEnum::CoEmailListAdded:
@@ -1343,6 +1475,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $schemata=Configure::read('fixedldap.schemata');
     $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($provisioningData['Co']['name']) .",".$basedn;
     $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($provisioningData['Co']['name']) .",".$basedn;
+    $this->servicedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($provisioningData['Co']['name']) .",".$basedn;
     
     // 'cache' data on this provisioning object, so we don't have to pass it around to
     // all methods
@@ -1360,17 +1493,17 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       }
     }
 
-    // for logging purposes, use the COPersonId to make errors traceable
-    $cid = $person ? $provisioningData['CoPerson']['id'] : $provisioningData['CoGroup']['id'];
+    // for logging purposes, use the model ID to make errors traceable
+    $cid = $provisioningData[$modelname]['id'];
+
     // Next, obtain a DN for this person or group
     try {
-      $type= $person ? 'person' : 'group';
       $dns = $this->CoLdapFixedProvisionerDn->obtainDn(
                 $this->targetData,
                 $provisioningData,
-                $type,
+                $dntype,
                 $assigndn);
-      $this->dev_log("retrieved new dns for $type: ".json_encode($dns));
+      $this->dev_log("retrieved new dns for $dntype: ".json_encode($dns));
     } catch (RuntimeException $e) {
       // This mostly never matches because $dns['newdnerr'] will usually be set
       throw new RuntimeException($e->getMessage());
@@ -1384,6 +1517,15 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // If a Person is not active and we were unable to create a new DN (or recalculate
       // what it should be), fail silently. This will typically happen when a new Petition
       // is created and the Person is not yet Active (and therefore has no identifiers assigned).
+      return true;
+    }
+    if ($service
+        && $assigndn
+        && !$dns['newdn']
+        && (!isset($provisioningData['CoService']['status'])
+           || $provisioningData['CoService']['status'] != StatusEnum::Active)) {
+      // If a Service is not active and we were unable to create a new DN (or recalculate
+      // what it should be), fail silently.
       return true;
     }
 
@@ -1428,6 +1570,16 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // make sure the CO organization and Groups and People OUs exist so we can put objects under them
     $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $provisioningData['Co']['name']);
 
+    if($service) {
+      // emit the labeledURI for services to the top CO
+      $this->provisionTopCO($provisioningData, $basedn);
+
+      $doserviceou = Configure::read('fixedldap.services');
+      if(empty($doserviceou)) {
+        return true;
+      }
+    }
+
     if ($delete) {
       $this->dev_log('Delete operation');
       // Delete any previous entry. For now, ignore any error.
@@ -1459,7 +1611,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       && !($delete && $add)) {
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
-        $this->log(_txt('er.ldapfixedprovisioner.rename1')." (coperson: $cid)", 'debug');
+        $this->log(_txt('er.ldapfixedprovisioner.rename1')." (model $modelname, id: $cid)", 'debug');
         $this->ldap_unbind();
         return true;
       }
@@ -1478,9 +1630,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         // XXX We should probably try to reset CoLdapFixedProvisionerDn here since we're
         // now inconsistent with LDAP
         $this->log(_txt('er.ldapfixedprovisioner.rename2').": ".$this->ldap_error() . 
-            " (".$this->ldap_errno() .", coperson: $cid)", 'error');
+            " (".$this->ldap_errno() .", model $modelname, id: $cid)", 'error');
         $this->dev_log(_txt('er.ldapfixedprovisioner.rename2').": ".$this->ldap_error() . 
-            " (".$this->ldap_errno() .", coperson: $cid)");
+            " (".$this->ldap_errno() .", model $modelname, id: $cid)");
         $this->ldap_unbind();
         return false;
       }
@@ -1492,7 +1644,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     if ($modify) {
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
-        $this->log(_txt('er.ldapfixedprovisioner.rename1')." (coperson: $cid)", 'debug');
+        $this->log(_txt('er.ldapfixedprovisioner.rename1')." (model $modelname, id: $cid)", 'debug');
         $this->ldap_unbind();
         return true;
       }
@@ -1503,9 +1655,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           $add = true;
         } else {
           $this->log(_txt('er.ldapfixedprovisioner.modify').": ".$this->ldap_error() . 
-              " (".$this->ldap_errno() .", coperson: $cid)", 'error');
+              " (".$this->ldap_errno() .", model $modelname, id: $cid)", 'error');
           $this->dev_log(_txt('er.ldapfixedprovisioner.modify').": ".$this->ldap_error() . 
-              " (".$this->ldap_errno() .", coperson: $cid)");
+              " (".$this->ldap_errno() .", model $modelname, id: $cid)");
           $this->ldap_unbind();
           return false;
         }
@@ -1521,16 +1673,16 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // Write a new entry
       if (!$dns['newdn']) {
         // silently ignore cases where we do not have a valid LDAP DN
-        $this->log(_txt('er.ldapfixedprovisioner.rename1')." (coperson: $cid)", 'debug');
+        $this->log(_txt('er.ldapfixedprovisioner.rename1')." (model $modelname, id: $cid)", 'debug');
         $this->ldap_unbind();
         return true;
       }
 
       if (!$this->ldap_add($dns['newdn'], $attributes)) {
         $this->log(_txt('er.ldapfixedprovisioner.add').": ".$this->ldap_error() . 
-            " (".$this->ldap_errno() .", coperson: $cid)", 'error');
+            " (".$this->ldap_errno() .", model $modelname, id: $cid)", 'error');
         $this->dev_log(_txt('er.ldapfixedprovisioner.add').": ".$this->ldap_error() . 
-            " (".$this->ldap_errno() .", coperson: $cid)");
+            " (".$this->ldap_errno() .", model $modelname, id: $cid)");
         $this->ldap_unbind();
         return false;
       }
@@ -1650,7 +1802,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   public function status($coProvisioningTargetId, $Model, $id)
   {
-    $this->dev_log('lfp status for '.json_encode($Model)." and ".json_encode($id));
+    $this->dev_log('lfp status for '.json_encode($Model->name)." and ".json_encode($id));
     $ret = array(
       'status'    => ProvisioningStatusEnum::Unknown,
       'timestamp' => null,
@@ -1726,29 +1878,20 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     }
     
     // Attributes should be listed in the order they are to be rendered in.
-    // The outermost key is the object class. If the objectclass is flagged
-    // as required => false, it MUST have a corresponding column oc_FOO in
-    // the cm_co_ldap_provisioner_targets.
+    // The outermost key is the object class. Then we define, for each objectclass,
+    // the objectclass meta data and the list of supported attributes
     $attributes = array(
       'person' => array(
         'objectclass' => array(
-          'required'    => true
+          'required'    => true,
+          'models' => array('CoPerson')
         ),
         // RFC4519 requires sn and cn for person
         // For now, CO Person is always attached to preferred name (CO-333)
         'attributes' => array(
-          'sn' => array(
-            'required'    => true,
-            'multiple'    => true
-          ),
-          'cn' => array(
-            'required'    => true,
-            'multiple'    => true
-          ),
-          'userPassword' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
+          'sn' => array('required'    => true,'multiple'    => true),
+          'cn' => array('required'    => true,'multiple'    => true),
+          'userPassword' => array('required'    => false,'multiple'    => true),
           // This isn't actually defined in an object class, it's part of the
           // server internal schema (if supported), but we don't have a better
           // place to put it
@@ -1761,17 +1904,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       ),
       'organizationalPerson' => array(
         'objectclass' => array(
-          'required'    => true
+          'required'    => true,
+          'models' => array('CoPerson')
         ),
         'attributes' => array(
-          'title' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
-          'ou' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
+          'title' => array('required'    => false,'multiple'    => true),
+          'ou' => array('required'    => false,'multiple'    => true),
           'telephoneNumber' => array(
             'required'    => false,
             'multiple'    => true,
@@ -1784,24 +1922,16 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'extendedtype' => 'telephone_number_types',
             'defaulttype' => ContactEnum::Fax
           ),
-          'street' => array(
-            'required'    => false,
-          ),
-          'l' => array(
-            'required'    => false,
-          ),
-          'st' => array(
-            'required'    => false,
-
-          ),
-          'postalCode' => array(
-            'required'    => false,
-          )
+          'street' => array('required'    => false),
+          'l' => array('required'    => false),
+          'st' => array('required'    => false),
+          'postalCode' => array('required'    => false)
         ),
       ),
       'inetOrgPerson' => array(
         'objectclass' => array(
-          'required'    => true
+          'required'    => true,
+          'models' => array('CoPerson')
         ),
         'attributes' => array(
           // For now, CO Person is always attached to preferred name (CO-333)
@@ -1820,10 +1950,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'typekey'     => 'en.name.type',
             'defaulttype' => NameEnum::Preferred
           ),
-          'o' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
+          'o' => array('required'    => false,'multiple'    => true),
           'labeledURI' => array(
             'required'    => false,
             'multiple'    => true,
@@ -1843,19 +1970,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'defaulttype' => ContactEnum::Mobile
           ),
           'employeeNumber' => array(
-
             'required'    => false,
             'multiple'    => false,
             'extendedtype' => 'identifier_types',
             'defaulttype' => IdentifierEnum::ePPN
           ),
-          'employeeType' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
-          'roomNumber' => array(
-            'required'    => false,
-          ),
+          'employeeType' => array('required'    => false, 'multiple'    => true),
+          'roomNumber' => array('required'    => false),
           'uid' => array(
             'required'    => false,
             'multiple'    => true,
@@ -1867,28 +1988,19 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       ),
       'eduPerson' => array(
         'objectclass' => array(
-          'required'    => false
+          'required'    => false,
+          'models' => array('CoPerson')
         ),
         'attributes' => array(
-          'eduPersonAffiliation' => array(
-            'required'  => false,
-            'multiple'  => true
-          ),
-          'eduPersonEntitlement' => array(
-            'required'  => false,
-            'multiple'  => true
-          ),
+          'eduPersonAffiliation' => array('required'  => false,'multiple'  => true),
+          'eduPersonEntitlement' => array('required'  => false,'multiple'  => true ),
           'eduPersonNickname' => array(
             'required'    => false,
             'multiple'    => true,
             'typekey'     => 'en.name.type',
             'defaulttype' => NameEnum::Preferred
           ),
-          'eduPersonOrcid' => array(
-            'required'  => false,
-            'multiple'  => false,
-            'alloworgvalue' => true
-          ),
+          'eduPersonOrcid' => array('required'  => false, 'multiple'  => false, 'alloworgvalue' => true ),
           'eduPersonPrincipalName' => array(
             'required'  => false,
             'multiple'  => false,
@@ -1902,10 +2014,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'extendedtype' => 'identifier_types',
             'defaulttype' => IdentifierEnum::ePPN
           ),
-          'eduPersonScopedAffiliation' => array(
-            'required'  => false,
-            'multiple'  => true
-          ),
+          'eduPersonScopedAffiliation' => array('required'  => false,'multiple'  => true),
           'eduPersonUniqueId' => array(
             'required'  => false,
             'multiple'  => false,
@@ -1916,53 +2025,32 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       ),
       'groupOfNames' => array(
         'objectclass' => array(
-          'required'    => false
+          'required'    => false,
+          'models' => array('CoGroup', 'Cou', 'Co', 'CoService')
         ),
         'attributes' => array(
-          'cn' => array(
-            'required'    => true,
-            'multiple'    => true
-          ),
-          'member' => array(
-            'required'    => true,
-            'multiple'    => true
-          ),
-          'owner' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
-          'description' => array(
-            'required'    => false,
-            'multiple'    => false
-          ),
-          'o' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
-          'ou' => array(
-            'required'    => false,
-            'multiple'    => false
-          ),
+          'cn' => array('required'    => true, 'multiple'    => true ),
+          'member' => array('required'    => true, 'multiple'    => true ),
+          'owner' => array('required'    => false, 'multiple'    => true),
+          'description' => array('required'    => false, 'multiple'    => false ),
+          'o' => array('required'    => false, 'multiple'    => true ),
+          'ou' => array('required'    => false, 'multiple'    => false ),
         )
       ),
       'eduMember' => array(
         'objectclass' => array(
-          'required'    => false
+          'required'    => false,
+          'models' => array('CoPerson', 'CoGroup', 'Co', 'Cou')
         ),
         'attributes' => array(
-          'isMemberOf' => array(
-            'required'  => false,
-            'multiple'  => true,
-          ),
-          'hasMember' => array(
-            'required'  => false,
-            'multiple'  => true
-          )
+          'isMemberOf' => array('required'  => false,'multiple'  => true),
+          'hasMember' => array('required'  => false, 'multiple'  => true )
         )
       ),
       'posixAccount' => array(
         'objectclass' => array(
-          'required'    => false
+          'required'    => false,
+          'models' => array('CoPerson')
         ),
         'attributes' => array(
           'uid' => array(
@@ -1972,76 +2060,103 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'extendedtype' => 'identifier_types',
             'defaulttype' => IdentifierEnum::UID
           ),
-          'cn' => array(
-            'required'   => true,
-            'multiple'   => true
-          ),
-          'description' => array(
-            'required'    => false,
-            'multiple'    => false
-          ),
-          'uidNumber' => array(
-            'required'   => true,
-            'multiple'   => false
-          ),
-          'gidNumber' => array(
-            'required'   => true,
-            'multiple'   => false
-          ),
-          'userPassword' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
-          'homeDirectory' => array(
-            'required'   => true,
-            'multiple'   => false
-          ),
-          'loginShell' => array(
-            'required'   => false,
-            'multiple'   => false
-          ),
-          'gecos' => array(
-            'required'   => false,
-            'multiple'   => false
-          )
+          'cn' => array('required'   => true,'multiple'   => true ),
+          'description' => array( 'required'    => false, 'multiple'    => false ),
+          'uidNumber' => array('required'   => true, 'multiple'   => false ),
+          'gidNumber' => array('required'   => true, 'multiple'   => false ),
+          'userPassword' => array('required'    => false, 'multiple'    => true ),
+          'homeDirectory' => array('required'   => true, 'multiple'   => false ),
+          'loginShell' => array('required'   => false, 'multiple'   => false ),
+          'gecos' => array('required'   => false, 'multiple'   => false )
         )
       ),
       'posixGroup' => array(
         'objectclass' => array(
-          'required'    => false
+         'required'    => false,
+          'models' => array('CoGroup', 'Cou','Co')
+          ),
+        'attributes' => array(
+          'cn' => array('required'   => true, 'multiple'   => true ),
+          'gidNumber' => array( 'required'   => true, 'multiple'   => false ),
+          'userPassword' => array('required'    => false, 'multiple'    => true ),
+          'memberUID' => array('required'   => false, 'multiple'   => true),
+          'description' => array( 'required'    => false, 'multiple'    => false)
+        )
+      ),
+      'organization' => array(
+        'objectclass' => array(
+          'required'     => false,
+          'models' => array('Co')
+          ),
+        'attributes' => array(
+          'userPassword' => array('required'   => false, 'multiple'   => true),
+//          'seeAlso' => array('required'   => false, 'multiple'   => true),
+//          'searchGuide' => array('required'   => false, 'multiple'   => true),
+//          'businessCategory' => array('required'   => false, 'multiple'   => true),
+//          'x121Address' => array('required'   => false, 'multiple'   => true),
+//          'registeredAddress' => array('required'   => false, 'multiple'   => true),
+//          'destinationIndicator' => array('required'   => false, 'multiple'   => true),
+//          'preferredDeliveryMethod' => array('required'   => false, 'multiple'   => true),
+//          'telexNumber' => array('required'   => false, 'multiple'   => true),
+//          'teletexTerminalIdentifier' => array('required'   => false, 'multiple'   => true),
+          'telephoneNumber' => array('required'   => false, 'multiple'   => true),
+//          'internationaliSDNNumber' => array('required'   => false, 'multiple'   => true),
+          'facsimileTelephoneNumber' => array('required'   => false, 'multiple'   => true),
+          'street' => array('required'   => false, 'multiple'   => true),
+//          'postOfficeBox' => array('required'   => false, 'multiple'   => true),
+          'postalCode' => array('required'   => false, 'multiple'   => true),
+          'postalAddress' => array('required'   => false, 'multiple'   => true),
+//          'physicalDeliveryOfficeName' => array('required'   => false, 'multiple'   => true),
+          'st' => array('required'   => false, 'multiple'   => true),
+          'l' => array('required'   => false, 'multiple'   => true),
+          'description' => array('required'   => false, 'multiple'   => false),
+        )
+      ),
+      'organizationalUnit' => array(
+        'objectclass' => array(
+          'required'     => false,
+          'models' => array('Cou')
+          ),
+        'attributes' => array(
+          'userPassword' => array('required'   => false, 'multiple'   => true),
+//          'seeAlso' => array('required'   => false, 'multiple'   => true),
+//          'searchGuide' => array('required'   => false, 'multiple'   => true),
+//          'businessCategory' => array('required'   => false, 'multiple'   => true),
+//          'x121Address' => array('required'   => false, 'multiple'   => true),
+//          'registeredAddress' => array('required'   => false, 'multiple'   => true),
+//          'destinationIndicator' => array('required'   => false, 'multiple'   => true),
+//          'preferredDeliveryMethod' => array('required'   => false, 'multiple'   => true),
+//          'telexNumber' => array('required'   => false, 'multiple'   => true),
+//          'teletexTerminalIdentifier' => array('required'   => false, 'multiple'   => true),
+          'telephoneNumber' => array('required'   => false, 'multiple'   => true),
+//          'internationaliSDNNumber' => array('required'   => false, 'multiple'   => true),
+          'facsimileTelephoneNumber' => array('required'   => false, 'multiple'   => true),
+          'street' => array('required'   => false, 'multiple'   => true),
+//          'postOfficeBox' => array('required'   => false, 'multiple'   => true),
+          'postalCode' => array('required'   => false, 'multiple'   => true),
+          'postalAddress' => array('required'   => false, 'multiple'   => true),
+//          'physicalDeliveryOfficeName' => array('required'   => false, 'multiple'   => true),
+          'st' => array('required'   => false, 'multiple'   => true),
+          'l' => array('required'   => false, 'multiple'   => true),
+          'description' => array('required'   => false, 'multiple'   => false),
+        )
+      ),
+      'labeledUriObject' => array(
+        'objectclass' => array(
+          'required' => false,
+          'models' => array('Co','CoService')
         ),
         'attributes' => array(
-          'cn' => array(
-            'required'   => true,
-            'multiple'   => true
-          ),
-          'gidNumber' => array(
-            'required'   => true,
-            'multiple'   => false
-          ),
-          'userPassword' => array(
-            'required'    => false,
-            'multiple'    => true
-          ),
-          'memberUID' => array(
-            'required'   => false,
-            'multiple'   => true
-          ),
-          'description' => array(
-            'required'    => false,
-            'multiple'    => false
-          )
+          'labeledURI' => array('required'   => false, 'multiple'   => true),
         )
       ),
       'ldapPublicKey' => array(
         'objectclass' => array(
-          'required'     => false
+          'required'     => false,
+          'models' => array('CoPerson')
         ),
         'attributes' => array(
-          'sshPublicKey' => array(
-            'required'   => true,
-            'multiple'   => true
-          ),
+          'sshPublicKey' => array('required'   => true, 'multiple'   => true),
           'uid' => array(
             'required'    => true,
             'multiple'    => true,
@@ -2053,7 +2168,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       ),
       'voPerson' => array(
         'objectclass' => array(
-          'required'    => false
+          'required'    => false,
+          'models' => array('CoPerson')
         ),
         'attributes' => array(
           'voPersonApplicationUID' => array(
@@ -2068,14 +2184,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'typekey'     => 'en.name.type',
             'defaulttype' => NameEnum::Author
           ),
-          'voPersonCertificateDN' => array(
-            'required'   => false,
-            'multiple'   => true
-          ),
-          'voPersonCertificateIssuerDN' => array(
-            'required'   => false,
-            'multiple'   => true
-          ),
+          'voPersonCertificateDN' => array('required'   => false, 'multiple'   => true),
+          'voPersonCertificateIssuerDN' => array('required'   => false, 'multiple'   => true),
           'voPersonExternalID' => array(
             'required'  => false,
             'multiple'  => true,
@@ -2088,20 +2198,14 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             'extendedtype' => 'identifier_types',
             'defaulttype' => IdentifierEnum::Enterprise
           ),
-          'voPersonPolicyAgreement' => array(
-            'required'   => false,
-            'multiple'   => true
-          ),
+          'voPersonPolicyAgreement' => array('required'   => false, 'multiple'   => true),
           'voPersonSoRID' => array(
             'required'  => false,
             'multiple'  => true,
             'extendedtype' => 'identifier_types',
             'defaulttype' => IdentifierEnum::SORID
           ),
-          'voPersonStatus' => array(
-            'required'   => false,
-            'multiple'   => true
-          )
+          'voPersonStatus' => array('required'   => false, 'multiple'   => true)
         )
       )
     );
@@ -2226,6 +2330,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   {
     $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
+    $this->sericedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $co);
 
     $results = $this->queryLdap($url, $binddn, $password, $this->peopledn, "(objectclass=*)", array("dn"));
@@ -2287,6 +2392,18 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         $this->dev_log("error adding Groups group as organizationalunit: ".json_encode($this->groupdn)." ".json_encode($attributes)." ".$this->ldap_error());
         $this->log(_txt('er.ldapfixedprovisioner.add3').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
         return $retval;
+      }
+    }
+
+    $doserviceou = Configure::read('fixedldap.services');
+    if(!empty($doserviceou)) {
+      $attributes = array("ou"=>"Services","objectClass"=>array("organizationalUnit"));
+      if (!$this->ldap_add($this->servicedn, $attributes)) {
+        if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
+          $this->dev_log("error adding Services group as organizationalunit: ".json_encode($this->servicedn)." ".json_encode($attributes)." ".$this->ldap_error());
+          $this->log(_txt('er.ldapfixedprovisioner.add4').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
+          return $retval;
+        }
       }
     }
     $this->dev_log('verify success');
@@ -2447,6 +2564,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         // Within the objectclass, iterate across the supported attributes looking
         // for required or enabled attributes. We need to add at least one $attr
         // before we add $oc to the list of objectclasses.
+
+        // if Co or Cou is not in the list of allowed models, skip this class
+        if(!in_array($is_cou ? "Cou": "Co", $supported[$oc]['objectclass']['models'])) {
+          continue;
+        }
+
         $attrEmitted = false;
         $this->dev_log('emitting objectclass '.$oc);
         foreach (array_keys($supported[$oc]['attributes']) as $attr) {
@@ -2462,7 +2585,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
             $cfg['attropts']=$attropts;
             try
             {
-              $attribute = $this->generateAttribute($attr, $cfg, $cou);
+              $attribute = $this->generateAttribute($attr, $cfg, $cou, $is_cou ? "Cou":"Co");
               $this->dev_log("attribute $attr returns ".json_encode($attribute));
             } catch (UnderflowException $e) {
               // We have a group with no members. Convert to a delete operation since
@@ -2756,12 +2879,94 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       $dns = $this->CoLdapFixedProvisionerDn->dnsForMembers($groupMembers, false);
 
       foreach($dns as $dn) {
-        $this->dev_log("trying del/add on ".$dn);
-        if($this->ldap_mod_del($dn, $oldattrs)) {
-          $this->dev_log("del succeeded");
-          $this->ldap_mod_add($dn, $newattrs);
+        $this->updateGroupForDn($dn, $oldattrs, $newattrs);
+      }
+
+      // Also update Service OUs that are IsMemberOf a specific group
+      $args = array();
+      $args['conditions']['Co.id'] = $group['CoGroup']['co_id'];
+      $args['contain'] = false;
+      $co = $this->CoLdapFixedProvisionerDn->Co->find('first', $args);
+
+      $args = array();
+      $args['conditions']['CoService.co_group_id'] = $group['CoGroup']['id'];
+      $args['contain'] = false;
+      $groupMembers = $this->CoLdapFixedProvisionerDn->CoService->find('all', $args);
+      $dns=array();
+      foreach($groupMembers['CoService'] as $service) {
+        $data=array('CoService'=>$service, 'Co'=> $co['Co']);
+        $dn = $this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $data, "service",false);
+        if(!empty($dn['newdn'])) {
+          $this->updateGroupForDn($dn['newdn'], $oldattrs, $newattrs);
         }
-        $this->dev_log($this->ldap_error());
+      }
+    }
+  }
+
+  private function updateGroupForDn($dn, $oldattr, $newattr) {
+    $this->dev_log("trying del/add on ".$dn);
+    if($this->ldap_mod_del($dn, $oldattrs)) {
+      $this->dev_log("del succeeded");
+      $this->ldap_mod_add($dn, $newattrs);
+    }
+    else {
+      $this->dev_log($this->ldap_error());
+    }
+  }
+
+  private function getGroupDn($id, $provisioningData) {
+    if(!$id) {
+      $args = array();
+      $args['conditions']['CoGroup.id'] = $id;
+      $args['contain'] = false;
+      $group = $this->CoLdapFixedProvisionerDn->CoGroup->find('first', $args);
+
+      if(!empty($group)) {
+        $dt=array_merge($group,array('Co'=>$provisioningData['Co']));
+        $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'group',true);
+        //$this->dev_log('dn returns '.json_encode($dn));
+        if(!empty($dn['newdn'])) {
+          return $dn['newdn'];
+        }
+      }
+    }
+    return "";
+  }
+
+  private function getCouDn($id, $provisioningData) {
+    if(!empty($id)) {
+      $args = array();
+      $args['conditions']['Cou.id'] = $id;
+      $args['contain'] = false;
+      $cou = $this->CoLdapFixedProvisionerDn->Cou->find('first', $args);
+
+      if(!empty($cou)) {
+        $dt=array_merge($cou,array('Co'=>$provisioningData['Co']));
+        $dn=$this->CoLdapFixedProvisionerDn->obtainDn($this->targetData, $dt,'cou',true);
+        //$this->dev_log('dn returns '.json_encode($dn));
+        if(!empty($dn['newdn'])) {
+          return $dn['newdn'];
+        }
+      }
+    }
+    return "";
+  }
+
+  private function provisionTopCO($provisioningData, $basedn) {
+    if(isset($provisioningData['CoService']) && !empty($provisioningData['CoService']['entitlement_uri'])) {
+      $coData = $provisioningData['Co']['name'];
+      $dn = $dn = "o=".$this->CoLdapFixedProvisionerDn->escape_dn($coData).",$basedn";
+
+      // we need to add the service entitlement-uri to the top CO objectclass
+      $attributes = array(
+        "o"=>$coData,
+        "objectClass"=>array("organization","labeledUriObject"),
+        "labeledURI" => $provisioningData['CoService']['entitlement_uri']
+        );
+      if (!$this->ldap_mod_replace($dn,$attributes)) {
+        $this->dev_log("error adding service to top organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
+        $this->log(_txt('er.ldapfixedprovisioner.add.service').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
+        return $retval;
       }
     }
   }

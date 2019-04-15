@@ -38,7 +38,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
     "CoPerson",
     "CoGroup",
     "Co",
-    "Cou"
+    "Cou",
+    "CoService"
   );
 
   // Default display field for cake generated views
@@ -71,12 +72,17 @@ class CoLdapFixedProvisionerDn extends AppModel {
       'required' => false,
       'allowEmpty' => true
     ),
+    'co_service_id' => array(
+      'rule' => 'numeric',
+      'required' => false,
+      'allowEmpty' => true
+    ),
     'dn' => array(
       'rule' => 'notBlank'
     )
   );
 
-  public $_cache=array("Co"=>array(),"Cou"=>array(),"CoGroup"=>array(),'CoPerson'=>array());  
+  private $_cache=array("Co"=>array(),"Cou"=>array(),"CoGroup"=>array(),'CoPerson'=>array(), "CoService"=>array());  
   /**
    * Assign a DN for a CO.
    *
@@ -160,6 +166,34 @@ class CoLdapFixedProvisionerDn extends AppModel {
     }
 
     $dn = "cn=" . $this->escape_dn($this->CoLdapFixedProvisionerTarget->prefix('group'). $coGroupData['CoGroup']['name']) . ",ou=Groups,".$basedn['newdn'];
+    return $dn;
+  }
+
+  /**
+   * Assign a DN for a CO Service.
+   *
+   * @since  COmanage Registry vTODO
+   * @param  Array CO Provisioning Target data
+   * @param  Array CO Group data
+   * @return String DN
+   * @throws RuntimeException
+   */
+
+  public function assignServiceDn($coProvisioningTargetData, $coServiceData) {
+    $dn = "";
+
+    // For now, we always construct the DN using cn.
+    if(empty($coServiceData['CoService']['name'])) {
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.component', 'cn'));
+    }
+
+    $basedn = $this->obtainDn($coProvisioningTargetData, $coServiceData, "co",true);
+    if(empty($basedn)) {
+      // Throw an exception... this should be defined
+      throw new RuntimeException(_txt('er.ldapfixedprovisioner.dn.config'));
+    }
+
+    $dn = "cn=" . $this->escape_dn($coServiceData['CoService']['name']) . ",ou=Services,".$basedn['newdn'];
     return $dn;
   }
 
@@ -486,6 +520,12 @@ class CoLdapFixedProvisionerDn extends AppModel {
       $subarray='CoPerson';
       $field='co_person_id';
       break;
+    case 'service':
+      $object_id = $provisioningData['CoService']['id'];
+      $cond = 'CoLdapFixedProvisionerDn.co_service_id';
+      $subarray='CoService';
+      $field='co_service_id';
+      break;
     case 'co':
       $object_id = $provisioningData['Co']['id'];
       $cond = 'CoLdapFixedProvisionerDn.co_id';
@@ -530,6 +570,8 @@ class CoLdapFixedProvisionerDn extends AppModel {
           $newDn = $this->assignCoDn($coProvisioningTargetData, $provisioningData);
         } else if($mode == 'cou') {
           $newDn = $this->assignCouDn($coProvisioningTargetData, $provisioningData);
+        } else if($mode == 'service') {
+          $newDn = $this->assignServiceDn($coProvisioningTargetData, $provisioningData);
         } else {
           $newDn = $this->assignGroupDn($coProvisioningTargetData, $provisioningData);
         }
