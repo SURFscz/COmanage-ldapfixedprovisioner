@@ -63,9 +63,8 @@ class CoLdapFixedProvisionerTargetsController extends SPTController {
         $args = array();
         $args['conditions']['Co.id'] = intval($coid);
         $co = $this->Co->find('first', $args);
-        $name = $co["Co"]["name"];
 
-        $this->CoLdapFixedProvisionerTarget->verifyLdapServer($url,$binddn,$password,$basedn,$name);
+        $this->CoLdapFixedProvisionerTarget->verifyLdapServer($url,$binddn,$password,$basedn,$co);
       }
       catch(RuntimeException $e) {
         $this->Flash->set($e->getMessage(), array('key' => 'error'));

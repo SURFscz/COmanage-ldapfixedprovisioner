@@ -1570,11 +1570,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     }
 
     // make sure the CO organization and Groups and People OUs exist so we can put objects under them
-    $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $provisioningData['Co']['name']);
+    $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $provisioningData);
 
     if($service) {
-      // emit the labeledURI for services to the top CO
-      $this->provisionTopCO($provisioningData, $basedn);
+      // we used to provision the services as labeledURI on the top CO at this point,
+      // but now we always reprovision all services at every provisioning call, so
+      // we can forget about this.
+      // $this->provisionTopCO($provisioningData, $basedn);
 
       $doserviceou = Configure::read('fixedldap.services');
       if(empty($doserviceou)) {
@@ -2328,8 +2330,9 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    * @return Boolean True if parameters are valid
    * @throws RuntimeException
    */
-  public function verifyLdapServer($url, $binddn, $password, $basedn, $co)
+  public function verifyLdapServer($url, $binddn, $password, $basedn, $coData)
   {
+    $co = $coData['Co']['name'];
     $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->sericedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
@@ -2359,21 +2362,15 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    */
   private function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
   {
-    $dn = "o=".$this->CoLdapFixedProvisionerDn->escape_dn($coData).",$basedn";
     $retval=array("","");
 
     if (!$this->connectLdap($url, $binddn, $password)) {
       return $retval;
     }
     
-    $this->dev_log('verifying CO organization');
-    $attributes = array("o"=>$coData,"objectClass"=>"organization");
-    if (!$this->ldap_add($dn,$attributes)) {        
-      if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
-        $this->dev_log("error adding CO as organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
-        $this->log(_txt('er.ldapfixedprovisioner.add1').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-        return $retval;
-      }
+    $this->dev_log("verifyOrCreateCo is provisioning top CO at $basedn");
+    if(!$this->provisionTopCO($coData, $basedn)) {
+      return $retval;
     }
 
     // to accomodate situations were the tree is partially removed, we test for the other objects as well
@@ -2955,41 +2952,77 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
   }
 
   private function provisionTopCO($provisioningData, $basedn) {
-    if(isset($provisioningData['CoService']) && !empty($provisioningData['CoService']['entitlement_uri'])) {
-      $coData = $provisioningData['Co']['name'];
-      $dn = $dn = "o=".$this->CoLdapFixedProvisionerDn->escape_dn($coData).",$basedn";
+    // this method is now the one and only method for messing with the top level organization object
+    // We are reprovisioning this object at every provisioning call now:
+    // - at every call, we need to check if the object exists. We can either do a search and, if required,
+    //   a subsequent add, or do a plain add directly, which saves a call
+    // - if the add fails because the object already exists, we might have to overwrite or rewrite some
+    //   values. We could have done a search and find out exactly which attributes were missing, but we
+    //   can also just do a mod_replace and add whatever we need. That saves complicated comparing logic
+    //
+    // The end-situation is that we have to make 2 calls at every verification:
+    // - an add to see if the object exists
+    // - and a replace-if-the-add-fails (which it normally does) to make sure the object contains valid data
+    //
+    // Because we do a mod_replace, we need to make sure we provision the correct set of objectclasses,
+    // including the labeledURIObject we need for services (and only if we have services). That means
+    // we need to search all services and provision them on the top CO object as well on every provisioning call.
 
-      // apparently it is not possible to add just a single attribute-value for multi-valued attributes.
-      // Instead, we need to mod_replace all possible values, which are all services of this CO
-      $args=array();
-      $args['conditions']['CoService.co_id']=$provisioningData['CoService']['co_id'];
-      $args['contain']=false;
-      $services = $this->CoLdapFixedProvisionerDn->CoService->find('all',$args);
+    $this->dev_log("base dn is $basedn");
+    $name = $provisioningData['Co']['name'];
+    $dn = $dn = "o=".$this->CoLdapFixedProvisionerDn->escape_dn($name).",$basedn";
 
+    $attributes = array(
+      "o"=>$name,
+      "objectclass"=>array(),
+      "description"=>json_encode(array("comanage_id"=>$provisioningData["Co"]["id"]))
+    );
+    $attributes["objectclass"][]="organization";
+
+    // apparently it is not possible to add just a single attribute-value for multi-valued attributes.
+    // Instead, we need to mod_replace all possible values, which are all services of this CO
+    $args=array();
+    $args['conditions']['CoService.co_id']=$provisioningData['Co']['id'];
+    $args['contain']=false;
+    $services = $this->CoLdapFixedProvisionerDn->CoService->find('all',$args);
+
+    if(sizeof($services)) {
       // we need to make sure labeledURIObject objectclass is present. Because this will
       // mod_replace the objectclass attribute, we need to specify all the classes we
       // need, including the ones already present.
       // Perhaps we should first read the object, then adjust the current values...
-      $attributes=array(
-        "objectClass"=>array("labeledUriObject",'Organization'),
-        "labeledURI" => array()
-      );
+      $attributes["objectclass"][]="labeledUriObject";
+      $attributes["labeledURI"]=array();
+
       foreach($services as $s)
       {
-        $this->dev_log("services is ".json_encode($s));
+        //$this->dev_log("services is ".json_encode($s));
         if(!empty($s['CoService']['service_label'])) {
           $attributes["labeledURI"][]=$s['CoService']['service_label'];
         }
       }
+    }
 
-      if (!$this->ldap_mod_replace($dn,$attributes)) {
-        $this->dev_log("error adding service to top organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
-        $this->log(_txt('er.ldapfixedprovisioner.add.service').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
+    $this->dev_log('provisioning top CO '.json_encode($attributes));
+
+    if (!$this->ldap_add($dn,$attributes)) {
+      if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
+        $this->dev_log("error adding CO as organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
+        $this->log(_txt('er.ldapfixedprovisioner.add1').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
         return false;
+      } else {
+        $this->dev_log("co ldap_add already exists"); 
+        if(!$this->ldap_mod_replace($dn,$attributes)) {
+          $this->dev_log("error modifying CO organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
+          $this->log(_txt('er.ldapfixedprovisioner.replace1').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
+          return false;
+        }
+        $this->dev_log("top CO provisioned ok");
+        return true;
       }
+    } else {
       return true;
     }
-    return false;
   }
 
   // convenience function to enable/disable the development/trace logs

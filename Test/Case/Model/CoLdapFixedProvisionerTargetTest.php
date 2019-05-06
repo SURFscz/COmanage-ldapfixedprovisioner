@@ -231,7 +231,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->CLPT->contain(array('CoProvisioningTarget'=>'Co'));
     $lpt = $this->CLPT->find('first',array(
         'conditions' => array('CoLdapFixedProvisionerTarget.id' => 1)));
-    $co=$lpt['CoProvisioningTarget']['Co']['name'];
+    $co=$lpt['CoProvisioningTarget'];
     $return_value=$method->invokeArgs($this->CLPT, array("ldap:///", "cn=bind,dc=example,dc=com", "password", "dc=example,dc=com",$co));
     $this->assertEquals($content,json_encode(LdapServiceBehavior::$content),"verify of ldap calls");
   }
@@ -246,7 +246,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->CLPT->contain(array('CoProvisioningTarget'=>'Co'));
     $lpt = $this->CLPT->find('first',array(
         'conditions' => array('CoLdapFixedProvisionerTarget.id' => 1)));
-    $co=$lpt['CoProvisioningTarget']['Co']['name'];
+    $co=$lpt['CoProvisioningTarget'];
     $return_value=$method->invokeArgs($this->CLPT, array("ldap:///", "cn=bind,dc=example,dc=com", "password", "dc=example,dc=com",$co));
   }
 
@@ -262,7 +262,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->CLPT->contain(array('CoProvisioningTarget'=>'Co'));
     $lpt = $this->CLPT->find('first',array(
         'conditions' => array('CoLdapFixedProvisionerTarget.id' => 1)));
-    $co=$lpt['CoProvisioningTarget']['Co']['name'];
+    $co=$lpt['CoProvisioningTarget'];
     $return_value=$method->invokeArgs($this->CLPT, array("ldap:///", "cn=bind,dc=example,dc=com", "password", "dc=example,dc=com",$co));
 
   }
@@ -280,7 +280,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->CLPT->contain(array('CoProvisioningTarget'=>'Co'));
     $lpt = $this->CLPT->find('first',array(
         'conditions' => array('CoLdapFixedProvisionerTarget.id' => 1)));
-    $co=$lpt['CoProvisioningTarget']['Co']['name'];
+    $co=$lpt['CoProvisioningTarget'];
     $return_value=$method->invokeArgs($this->CLPT, array("ldap:///", "cn=bind,dc=example,dc=com", "password", "dc=example,dc=com",$co));
   }
 
@@ -298,7 +298,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->CLPT->contain(array('CoProvisioningTarget'=>'Co'));
     $lpt = $this->CLPT->find('first',array(
         'conditions' => array('CoLdapFixedProvisionerTarget.id' => 1)));
-    $co=$lpt['CoProvisioningTarget']['Co']['name'];
+    $co=$lpt['CoProvisioningTarget'];
     $return_value=$method->invokeArgs($this->CLPT, array("ldap:///", "cn=bind,dc=example,dc=com", "password", "dc=example,dc=com",$co));
   }
 
@@ -322,7 +322,7 @@ class CoLdapFixedProvisionerTargetTest extends CakeTestCase {
     $this->CLPT->contain(array('CoProvisioningTarget'=>'Co'));
     $lpt = $this->CLPT->find('first',array(
         'conditions' => array('CoLdapFixedProvisionerTarget.id' => 1)));
-    $co=$lpt['CoProvisioningTarget']['Co']['name'];
+    $co=$lpt['CoProvisioningTarget'];
     $return_value=$method->invokeArgs($this->CLPT, array("ldap:///", "cn=bind,dc=example,dc=com", "password", "dc=example,dc=com",$co));
   }
 
