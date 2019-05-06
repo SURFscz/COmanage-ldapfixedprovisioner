@@ -29,7 +29,7 @@ The configuration resides inside a ```config``` variable and specifies basic ser
 * dn_identifier_type: the Identifier attribute to retrieve when generating the DN, usually also one of ```eppn```, ```sorid``` or ```uid```
 * scope_suffix: a suffix to apply on scoped attributes like eduPersonScopedAffiliation and eduPersonUniqueId. This parameter allows template replacement for the tag ```{CO}```, which is replaced with the name of the CO of the current group or person.
 * remove_unused: a boolean value to indicate whether empty but specified attributes should be removed from the LDAP
-* services: a boolean value indicating whether the Services OU should be created. This OU contains entries listing all active services, as ```groupOfNames``` related to the CO, COU and/or Group in the ```Groups``` OU. The service ```entitlement_uri``` is always generated as a ```labeledURI``` on the top Organization entry, irrespective of this setting.
+* services: a boolean value indicating whether the Services OU should be created. This OU contains entries listing all active services, as ```groupOfNames``` related to the CO, COU and/or Group in the ```Groups``` OU. The service ```service_label``` is always generated as a ```labeledURI``` on the top Organization entry, irrespective of this setting.
 * server: a hash/dictionary/keyed array of the server connection values ```url```, ```binddn``` and ```password```
 * person_ocs: an array of all additional objectclasses to add to COPerson records
 * group_ocs: an array of all additional objectclasses to add to COGroup records
@@ -50,7 +50,7 @@ For each enabled objectclass, a configuration hash/dictionary/keyed array can be
 * ```voPerson``` (optional, only for CoPerson models)
 * ```organization``` (optional, only for Co models)
 * ```organizationalUnit``` (optional, only for Cou models)
-* ```labeledUriObject``` (optional, for Co and CoService models)
+* ```labeledURIObject``` (optional, for Co and CoService models)
 
 The attributes required for the classes (```sn```, ```cn```, ```member```, ```uidNumber```, ```gidNumber```, ```sshPublicKey```, ```uid```, etc.) are generated automatically whenever the associated objectclass is enabled. This follows the same behaviour as the well known LdapProvisioner plugin.
 

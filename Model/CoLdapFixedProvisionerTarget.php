@@ -144,6 +144,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       // Name attributes
       case 'cn':
         if($cou) {
+          $this->dev_log("provisioningData for cou is ".json_encode($provisioningData));
           $attribute[$lattr][] = $this->prefix('cou').$provisioningData['Cou']['name'];
           break;
         } 
@@ -1114,12 +1115,13 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $service = isset($provisioningData['CoService']);
     $co = isset($provisioningData['Co']) && !($person || $group || $cou || $service);
     $modelname = $group ? "CoGroup" :
-      ($person ? "CoPerson":
-        $cou ? "Cou" : (
-          $service ? "CoService" : (
-            $co ? "Co" : "unknown" )));
+      ($person ? "CoPerson" :
+        ($cou ? "Cou" :
+          ($service ? "CoService" :
+            ($co ? "Co" : "unknown" ))));
 
-
+    $this->dev_log('modelname is '.$modelname." settings ".json_encode(array($group,$person,$cou,$service,$co)));
+    $this->dev_log("model is ".json_encode($provisioningData[$modelname]));
     // Make it easier to see if attribute options are enabled
     $attropts = ($person && Configure::read('fixedldap.attr_opts'));
     //$this->dev_log("attropts is ".($attropts ? "TRUE":"FALSE"));
@@ -2957,18 +2959,37 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       $coData = $provisioningData['Co']['name'];
       $dn = $dn = "o=".$this->CoLdapFixedProvisionerDn->escape_dn($coData).",$basedn";
 
-      // we need to add the service entitlement-uri to the top CO objectclass
-      $attributes = array(
-        "o"=>$coData,
-        "objectClass"=>array("organization","labeledUriObject"),
-        "labeledURI" => $provisioningData['CoService']['entitlement_uri']
-        );
+      // apparently it is not possible to add just a single attribute-value for multi-valued attributes.
+      // Instead, we need to mod_replace all possible values, which are all services of this CO
+      $args=array();
+      $args['conditions']['CoService.co_id']=$provisioningData['CoService']['co_id'];
+      $args['contain']=false;
+      $services = $this->CoLdapFixedProvisionerDn->CoService->find('all',$args);
+
+      // we need to make sure labeledURIObject objectclass is present. Because this will
+      // mod_replace the objectclass attribute, we need to specify all the classes we
+      // need, including the ones already present.
+      // Perhaps we should first read the object, then adjust the current values...
+      $attributes=array(
+        "objectClass"=>array("labeledUriObject",'Organization'),
+        "labeledURI" => array()
+      );
+      foreach($services as $s)
+      {
+        $this->dev_log("services is ".json_encode($s));
+        if(!empty($s['CoService']['service_label'])) {
+          $attributes["labeledURI"][]=$s['CoService']['service_label'];
+        }
+      }
+
       if (!$this->ldap_mod_replace($dn,$attributes)) {
         $this->dev_log("error adding service to top organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
         $this->log(_txt('er.ldapfixedprovisioner.add.service').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-        return $retval;
+        return false;
       }
+      return true;
     }
+    return false;
   }
 
   // convenience function to enable/disable the development/trace logs
