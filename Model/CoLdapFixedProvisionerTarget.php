@@ -204,25 +204,24 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         }
         break;
 
+      case 'o':
+        // specific use for O: export CO name
+        $attribute[$attr]=$provisioningData['Co']['name'];
+        break;
+
       // Attributes from CO Person Role
       case 'eduPersonAffiliation':
       case 'eduPersonScopedAffiliation':
       case 'employeeType':
-      case 'o':
       case 'ou':
       case 'title':
         // a COU always falls under the Groups organizationalUnit
         if($cou || $co || $group || $service) {
-          switch($attr)  {
-          case 'ou':
+          if($attr == 'ou') {
             if($group) $attribute[$attr]='group';
             if($cou) $attribute[$attr]='cou';
             if($co) $attribute[$attr]='co';
             if($service) $attribute[$attr]='service';
-            break;
-          case 'o':
-            $attribute[$attr]=$provisioningData['Co']['name'];
-            break;
           }
           break;          
         }      
@@ -627,23 +626,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
 
       // Group attributes (cn is covered above)
       case 'description':
-        if($person) {
-          # description is used in posixAccount as cn
-          $attribute[$attr] = generateCn($provisioningData['PrimaryName']);
-        }
-        // A blank description is invalid, so don't populate if empty
-        else if ($group && !empty($provisioningData['CoGroup']['description'])) {
-          $attribute[$attr] = $provisioningData['CoGroup']['description'];
-        }
-        else if ($cou && !empty($provisioningData['Cou']['description'])) {
-          $attribute[$attr] = $provisioningData['Cou']['description'];
-        }
-        else if ($service && !empty($provisioningData['CoService']['description'])) {
-          $attribute[$attr] = $provisioningData['CoService']['description'];
-        }
-        else if ($co && !empty($provisioningData['Co']['description'])) {
-          $attribute[$attr] = $provisioningData['Co']['description'];
-        }
+        $attribute[$attr] = $this->createDescription($provisioningData, $modelType);
         break;
       // hasMember and isMember of are both part of the eduMember objectclass, which can apply
       // to both people and group entries. Check what type of data we're working with for both.
@@ -866,6 +849,11 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           $attribute[$attr] = '000001010000Z';
         }
         break;
+
+      case 'dnQualifier':
+        $attribute[$attr] = $provisioningData['Co']['id'];
+        break;
+
       default:
         throw new InternalErrorException("Unknown attribute: " . $attr);
         break;
@@ -1885,6 +1873,15 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     // The outermost key is the object class. Then we define, for each objectclass,
     // the objectclass meta data and the list of supported attributes
     $attributes = array(
+      'extensibleObject' => array(
+        'objectclass' => array(
+          'required' => true,
+          'models' => array('CoPerson','CoGroup','CoService', 'Co', 'Cou')
+        ),
+        'attributes' => array(
+          'dnQualifier' => array('required' => true)
+        )
+      ),
       'person' => array(
         'objectclass' => array(
           'required'    => true,
@@ -2442,7 +2439,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       "owner" => array("oc"=>"groupOfNames"),
       "description" => array("oc"=>"groupOfNames"),
       "o" => array("oc"=>"groupOfNames"),
-      "ou" => array("oc"=>"groupOfNames")
+      "ou" => array("oc"=>"groupOfNames"),
+      "dnQualifier" => array("oc"=>'extensibleObject')
     );
 
     // transform the configuration into a set usable by generateAttribute
@@ -2799,7 +2797,8 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       "owner" => array("oc"=>"groupOfNames"),
       "description" => array("oc"=>"groupOfNames"),
       "o" => array("oc"=>"groupOfNames"),
-      "ou" => array("oc"=>"groupOfNames")
+      "ou" => array("oc"=>"groupOfNames"),
+      "dnQualifier" => array("oc"=>'extensibleObject')
     );
 
     // transform the configuration into a set usable by generateAttribute
@@ -2975,9 +2974,11 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $attributes = array(
       "o"=>$name,
       "objectclass"=>array(),
-      "description"=>json_encode(array("comanage_id"=>$provisioningData["Co"]["id"]))
+      "description"=>json_encode(array("comanage_id"=>$provisioningData["Co"]["id"])),
+      "dnQualifier" => $provisioningData["Co"]["id"]
     );
     $attributes["objectclass"][]="organization";
+    $attributes["objectclass"][]="extensibleObject";
 
     // apparently it is not possible to add just a single attribute-value for multi-valued attributes.
     // Instead, we need to mod_replace all possible values, which are all services of this CO
@@ -3023,6 +3024,37 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     } else {
       return true;
     }
+  }
+
+  private function createDescription($provisioningData, $model)
+  {
+    // read the description contents from our configuration
+    $descriptions=Configure::read('fixedldap.descriptions');
+    if (!is_array($descriptions)) $descriptions = array();
+
+    // make sure there is a default setting
+    $descriptions = array_merge(array("default" => array("description"=>"description")), $descriptions);
+    $this->dev_log('descriptions are '.json_encode($descriptions));
+    // if there is no model specific setting, take the default setting
+    $setting = isset($descriptions[$model]) ? $descriptions[$model] : $descriptions["default"];
+    $this->dev_log('using '.json_encode($setting).' for '.$model);
+    $retval=array();
+    foreach($setting as $key=>$attr) {
+      if(strpos($attr,'.')!==FALSE) {
+        // split on modelname.attribute
+        list($model2,$attr2) = explode('.',$attr,2);
+        if(isset($provisioningData[$model2]) && is_array($provisioningData[$model2]) && isset($provisioningData[$model2][$attr2])) {
+          $retval[$key]=$provisioningData[$model2][$attr2];
+        }
+      }
+      else {
+        if(isset($provisioningData[$model][$attr])) {
+          $retval[$key]=$provisioningData[$model][$attr];
+        }
+      }
+    }
+    $this->dev_log('exporting '.json_encode($retval));
+    return json_encode($retval);
   }
 
   // convenience function to enable/disable the development/trace logs

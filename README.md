@@ -34,6 +34,7 @@ The configuration resides inside a ```config``` variable and specifies basic ser
 * person_ocs: an array of all additional objectclasses to add to COPerson records
 * group_ocs: an array of all additional objectclasses to add to COGroup records
 * schemata: an array of all enabled objectclasses
+* descriptions: an array of description json blob contents
 
 People are exported in an OU with DN ```ou=People,o=<CO>,<base DN>```, groups are exported in an OU with DN ```ou=Groups,o=<CO>,<base DN>``` and services, if enabled, are exported in an OU with DN ```ou=Services,o=<CO>,<base DN>```. The ```<CO>``` is replaced with the name of the CO of which the CoPerson, CoGroup or CoService record is a part.
 
@@ -88,6 +89,17 @@ This is a questionable use of the 'type' field though, so this configuration may
 
 Both ```posixGroup``` and ```groupOfNames``` are supported as objectclass for group type structures. However, both of these LDAP structures are of type ```STRUCTURAL```, which means they cannot be both used for exporting groups.
 
+extensibleObject
+================
+Each object automatically has the 'extensibleObject' objectclass added to it. Through this objectclass, the plugin generates the 'dnQualifier' attribute and initialises it with the COmanage database identifier of the relevant CO. This behaviour cannot be configured.
+
+Descriptions
+============
+The description field of each object is filled with a JSON encoded data blob. The content of this data blob can be configured using the ```descriptions``` attribute of the configuration.
+
+For each model type (```CoPerson```, ```CoGroup```, ```CoService```, ```Co```, ```Cou```), the ```descriptions``` configuration can contain an array of key-values, where the key is the blob attribute name and the value is the model field. A field from a different model can also be specified using dot notation, e.g.: ```Co.id``` or ```Co.name```.
+
+A default model called ```default``` can be specified to be used if no model specific description configuration is present. If no description is present at all, the plugin defaults to ```'descriptions' => array('default' => array('description'=>'description'))```, which means it will fill the description attribute with a JSON blob that contains the model description field (if present). 
 
 DN Attribute Name
 =================
@@ -142,6 +154,22 @@ $config=array(
 
     # list all additional objectclasses for a Group record
     'group_ocs' => array(),
+
+    # description JSON blob content
+    'descriptions' => array(
+        'default' => array(
+            'description' => 'description'
+        ),
+        'CoPerson' => array('
+            'description' => 'name'
+        ),
+        'CoGroup' => array(
+            'description' => 'description',
+            'comanage-id' => 'Co.id',
+            'co-name' => 'Co.name'
+        )
+    ),
+            
 
     # list all enabled schemata
     'schemata' => array(
