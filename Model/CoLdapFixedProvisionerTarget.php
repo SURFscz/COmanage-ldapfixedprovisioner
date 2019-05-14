@@ -2333,7 +2333,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->sericedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
-    $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $co);
+    $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $coData);
 
     $results = $this->queryLdap($url, $binddn, $password, $this->peopledn, "(objectclass=*)", array("dn"));
 
