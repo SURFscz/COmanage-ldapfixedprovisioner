@@ -2332,8 +2332,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $co = $coData['Co']['name'];
     $this->peopledn = "ou=People,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
-    $this->sericedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
-    $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $coData);
+    $this->servicedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
+    $status = $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $coData);
+CakeLog::write('debug','verify status is '.json_encode($status));
+    if($status !== TRUE) {
+      throw new RuntimeException($status);
+    }
 
     $results = $this->queryLdap($url, $binddn, $password, $this->peopledn, "(objectclass=*)", array("dn"));
 
@@ -2346,6 +2350,16 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     if (count($results) < 1) {
       throw new RuntimeException(_txt('er.ldapfixedprovisioner.basedn.gr.none'));
     }
+
+    // Check for a Service DN if one is configured
+    $doserviceou = Configure::read('fixedldap.services');
+    if(!empty($doserviceou)) {
+      $results = $this->queryLdap($url, $binddn, $password, $this->servicedn, "(objectclass=*)", array("dn"));
+      if (count($results) < 1) {
+        throw new RuntimeException(_txt('er.ldapfixedprovisioner.basedn.srv.none'));
+      }
+    }
+
     return true;
   }
 
@@ -2355,19 +2369,19 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
    *
    * @since  COmanage Registry vTODO
    * @param  Array CO data
-   * @return Boolean True
+   * @return Mixed Error message or TRUE of all okay
    */
   private function verifyOrCreateCo($url, $binddn, $password, $basedn, $coData)
   {
-    $retval=array("","");
+    $retval=TRUE;
 
     if (!$this->connectLdap($url, $binddn, $password)) {
-      return $retval;
+      return _txt("er.ldapfixedprovisioner.connect");
     }
     
     $this->dev_log("verifyOrCreateCo is provisioning top CO at $basedn");
     if(!$this->provisionTopCO($coData, $basedn)) {
-      return $retval;
+      return _txt('er.ldapfixedprovisioner.hierarchy');
     }
 
     // to accomodate situations were the tree is partially removed, we test for the other objects as well
@@ -2378,7 +2392,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
         $this->dev_log("error adding People group as organizationalunit: ".json_encode($this->peopledn)." ".json_encode($attributes)." ".$this->ldap_error());
         $this->log(_txt('er.ldapfixedprovisioner.add2').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-        return $retval;
+        return _txt('er.ldapfixedprovisioner.add2');
       }
     }
 
@@ -2387,7 +2401,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
       if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
         $this->dev_log("error adding Groups group as organizationalunit: ".json_encode($this->groupdn)." ".json_encode($attributes)." ".$this->ldap_error());
         $this->log(_txt('er.ldapfixedprovisioner.add3').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-        return $retval;
+        return _txt('er.ldapfixedprovisioner.add3');
       }
     }
 
@@ -2398,11 +2412,12 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
         if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
           $this->dev_log("error adding Services group as organizationalunit: ".json_encode($this->servicedn)." ".json_encode($attributes)." ".$this->ldap_error());
           $this->log(_txt('er.ldapfixedprovisioner.add4').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
-          return $retval;
+          return _txt('er.ldapfixedprovisioner.add4');
         }
       }
     }
     $this->dev_log('verify success');
+    return TRUE;
   }
 
   /**

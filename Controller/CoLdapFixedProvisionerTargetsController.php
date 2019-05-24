@@ -63,7 +63,7 @@ class CoLdapFixedProvisionerTargetsController extends SPTController {
         $args = array();
         $args['conditions']['Co.id'] = intval($coid);
         $co = $this->Co->find('first', $args);
-
+CakeLog::write('debug','verifying ldap server');
         $this->CoLdapFixedProvisionerTarget->verifyLdapServer($url,$binddn,$password,$basedn,$co);
       }
       catch(RuntimeException $e) {

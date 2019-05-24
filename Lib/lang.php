@@ -39,10 +39,12 @@ $cm_ldap_fixed_provisioner_texts['en_US'] = array(
   // Error messages
   'er.ldapfixedprovisioner.config'         => 'Base configuration not found',
   'er.ldapfixedprovisioner.basedn.gr.none' => 'Group DN configured, but not found on the LDAP server.',
-  'er.ldapfixedprovisioner.basedn'         => 'Base DN not found',
+  'er.ldapfixedprovisioner.basedn.srv.none' => 'Services DN configured, but not found on the LDAP server.',
+  'er.ldapfixedprovisioner.basedn'         => 'People DN configured, but not found on LDAP server.',
   'er.ldapfixedprovisioner.connect'        => 'Failed to connect to LDAP server',
   'er.ldapfixedprovisioner.bind'           => 'Failed to bind to LDAP server',
   'er.ldapfixedprovisioner.query'          => 'Failed to perform query on LDAP server',
+  'er.ldapfixedprovisioner.hierarchy'      => 'Failed to create base hierarchy',
   'er.ldapfixedprovisioner.rename1'        => 'Rename failed: no new DN could be created',
   'er.ldapfixedprovisioner.rename2'        => 'LDAP error during rename',
   'er.ldapfixedprovisioner.modify'         => 'LDAP error during modify',
