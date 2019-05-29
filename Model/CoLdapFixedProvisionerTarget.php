@@ -2090,6 +2090,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           'models' => array('Co')
           ),
         'attributes' => array(
+          'o' => array('required'    => true,'multiple'    => true),
           'userPassword' => array('required'   => false, 'multiple'   => true),
 //          'seeAlso' => array('required'   => false, 'multiple'   => true),
 //          'searchGuide' => array('required'   => false, 'multiple'   => true),
@@ -2119,6 +2120,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
           'models' => array('Cou')
           ),
         'attributes' => array(
+          'ou' => array('required'    => true,'multiple'    => true),
           'userPassword' => array('required'   => false, 'multiple'   => true),
 //          'seeAlso' => array('required'   => false, 'multiple'   => true),
 //          'searchGuide' => array('required'   => false, 'multiple'   => true),
@@ -2334,7 +2336,7 @@ class CoLdapFixedProvisionerTarget extends CoProvisionerPluginTarget
     $this->groupdn="ou=Groups,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $this->servicedn="ou=Services,o=" . $this->CoLdapFixedProvisionerDn->escape_dn($co).",".$basedn;
     $status = $this->verifyOrCreateCo($url, $binddn, $password, $basedn, $coData);
-CakeLog::write('debug','verify status is '.json_encode($status));
+
     if($status !== TRUE) {
       throw new RuntimeException($status);
     }
@@ -3019,11 +3021,13 @@ CakeLog::write('debug','verify status is '.json_encode($status));
       }
     }
 
+    $attributes = $this->checkAttributes($attributes, array("o"=>$name));
     $this->dev_log('provisioning top CO '.json_encode($attributes));
 
-    if (!$this->ldap_add($dn,$attributes)) {
+    $addAttributes = $this->removeEmptyAttributes($attributes);
+    if (!$this->ldap_add($dn,$addAttributes)) {
       if ($this->ldap_errno() != 0x44 /* LDAP_ALREADY_EXISTS */) {
-        $this->dev_log("error adding CO as organization: ".json_encode($dn)." ".json_encode($attributes)." ".$this->ldap_error());
+        $this->dev_log("error adding CO as organization: ".json_encode($dn)." ".json_encode($addAttributes)." ".$this->ldap_error());
         $this->log(_txt('er.ldapfixedprovisioner.add1').": ".$this->ldap_error() . " (".$this->ldap_errno() .")", 'error');
         return false;
       } else {
